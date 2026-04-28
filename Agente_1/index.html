@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Microrred DC — Control Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<script type="module">
+  import { initializeApp }     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, onValue, query, orderByKey, limitToLast }
+                               from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+  /* ══════════════════════════════════════════
+     ▶▶  PEGA TU firebaseConfig AQUÍ  ◀◀
+  ══════════════════════════════════════════ */
+  const firebaseConfig = {
+    apiKey            : "AIzaSyDwXigQYn1N0nreSYCJ8h0ta63i1mjIWK8",
+    authDomain        : "microred-dc.firebaseapp.com",
+    databaseURL       : "https://microred-dc-default-rtdb.firebaseio.com",
+    projectId         : "microred-dc",
+    storageBucket     : "microred-dc.firebasestorage.app",
+    messagingSenderId : "929937213017",
+    appId             : "1:929937213017:web:73d86c234238f151195348"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getDatabase(app);
+
+  /* ── 1. Cargar historial al conectarse ── 
+     Lee los últimos 60 puntos de /history/agenteN
+     y los precarga en los charts antes de escuchar en tiempo real.      */
+  async function cargarHistorial() {
+    window.setStatus("Cargando historial desde Firebase...");
+    const agentes = ["agente1", "agente2", "agente3"];
+
+    for (const ag of agentes) {
+      const n = parseInt(ag.replace("agente",""));
+      const q = query(
+        ref(db, "history/" + ag),
+        orderByKey(),
+        limitToLast(60)
+      );
+
+      await new Promise(resolve => {
+        onValue(q, (snap) => {
+          const data = snap.val();
+          if (data) {
+            const entries = Object.values(data)
+              .sort((a,b) => a.ts - b.ts);   /* ordenar por timestamp */
+            entries.forEach(pt => {
+              window.pushHistoryPoint(n, pt);
+            });
+          }
+          resolve();
+        }, { onlyOnce: true });
+      });
+    }
+    window.setStatus("Firebase · En línea");
+  }
+
+  /* ── 2. Escuchar valores actuales en tiempo real ──
+     Actualiza las métricas y el último punto de las gráficas.           */
+  function escucharActuales() {
+    onValue(ref(db, "agentes"), (snap) => {
+      const data = snap.val();
+      if (!data) return;
+      [1,2,3].forEach(n => {
+        const ag = data["agente" + n];
+        if (ag) window.actualizarAgente(n, ag);
+      });
+    });
+  }
+
+  /* ── 3. Escuchar historial nuevo en tiempo real ──
+     Cada vez que el ESP32 agrega un punto, lo agrega a los charts.     */
+  function escucharHistorial() {
+    [1,2,3].forEach(n => {
+      const q = query(
+        ref(db, "history/agente" + n),
+        orderByKey(),
+        limitToLast(1)
+      );
+      onValue(q, (snap) => {
+        const data = snap.val();
+        if (!data) return;
+        const pt = Object.values(data)[0];
+        window.pushHistoryPoint(n, pt);
+      });
+    });
+  }
+
+  /* Inicializar en orden */
+  cargarHistorial().then(() => {
+    escucharActuales();
+    escucharHistorial();
+  });
+</script>
+
+<style>
+:root {
+  --bg:      #0a0b0d; --bg2: #111318; --bg3: #181c22;
+  --border:  rgba(255,255,255,0.07);
+  --text:    #e8e6df; --muted: #5a5f6b;
+  --green:   #00e5a0; --red: #ff4f5e; --amber: #f5c842;
+  --font-mono: 'Space Mono', monospace;
+  --font-ui:   'Syne', sans-serif;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:var(--font-ui); background:var(--bg); color:var(--text); min-height:100vh; }
+
+.shell { max-width:1280px; margin:0 auto; padding:28px 24px 48px; }
+
+header {
+  display:flex; align-items:flex-end; justify-content:space-between;
+  margin-bottom:24px; padding-bottom:18px;
+  border-bottom:1px solid var(--border);
+}
+.logo { display:flex; align-items:center; gap:14px; }
+.logo-mark {
+  width:34px; height:34px; border:2px solid var(--green);
+  border-radius:6px; display:flex; align-items:center; justify-content:center;
+}
+.logo-mark::after {
+  content:''; width:10px; height:10px; background:var(--green);
+  border-radius:50%; animation:pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+
+h1 { font-size:18px; font-weight:800; letter-spacing:.04em; }
+h1 span { color:var(--muted); font-weight:400; }
+.header-meta { font-family:var(--font-mono); font-size:11px; color:var(--muted); text-align:right; line-height:1.9; }
+#live-clock { color:var(--amber); }
+
+/* ── Loader overlay ── */
+#loader {
+  position:fixed; inset:0; background:var(--bg);
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  z-index:100; transition:opacity .5s;
+}
+#loader.hidden { opacity:0; pointer-events:none; }
+.loader-ring {
+  width:40px; height:40px; border:2px solid var(--border);
+  border-top-color:var(--green); border-radius:50%;
+  animation:spin 1s linear infinite; margin-bottom:16px;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.loader-text { font-family:var(--font-mono); font-size:12px; color:var(--muted); }
+
+/* ── Bus strip ── */
+.bus-strip {
+  background:var(--bg3); border:1px solid var(--border);
+  border-radius:10px; padding:14px 24px;
+  display:flex; align-items:center; gap:40px;
+  margin-bottom:24px; position:relative; overflow:hidden;
+}
+.bus-strip::before {
+  content:'BUS DC'; position:absolute; left:16px; top:8px;
+  font-family:var(--font-mono); font-size:9px;
+  color:var(--amber); letter-spacing:.2em; opacity:.6;
+}
+.bus-line {
+  flex:1; height:2px;
+  background:linear-gradient(90deg,transparent 0%,var(--amber) 20%,var(--amber) 80%,transparent 100%);
+  opacity:.3;
+}
+.bus-metric { display:flex; flex-direction:column; align-items:center; }
+.bus-metric .val { font-family:var(--font-mono); font-size:26px; font-weight:700; color:var(--amber); line-height:1; }
+.bus-metric .val span { font-size:13px; }
+.bus-metric .lbl { font-size:10px; color:var(--muted); letter-spacing:.12em; margin-top:4px; text-transform:uppercase; }
+
+/* ── Agents grid ── */
+.agents-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:14px; margin-bottom:24px; }
+
+.agent-card { background:var(--bg2); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
+.agent-card-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 18px; border-bottom:1px solid var(--border); background:var(--bg3);
+}
+.agent-name { font-size:13px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
+.agent-id { font-family:var(--font-mono); font-size:10px; color:var(--muted); }
+.mode-pill {
+  font-family:var(--font-mono); font-size:10px; font-weight:700;
+  padding:4px 10px; border-radius:20px; letter-spacing:.08em;
+  text-transform:uppercase; transition:all .4s;
+}
+.mode-boost { background:rgba(0,229,160,.12); color:var(--green); border:1px solid rgba(0,229,160,.25); }
+.mode-buck  { background:rgba(255,79,94,.12);  color:var(--red);   border:1px solid rgba(255,79,94,.25); }
+
+.agent-body { padding:16px; }
+
+.metrics-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+.metric-block { background:var(--bg3); border-radius:8px; padding:12px 14px; }
+.metric-block .m-label { font-size:9px; color:var(--muted); letter-spacing:.15em; text-transform:uppercase; margin-bottom:6px; }
+.metric-block .m-value { font-family:var(--font-mono); font-size:20px; font-weight:700; color:var(--text); line-height:1; }
+.metric-block .m-unit  { font-size:11px; color:var(--muted); margin-left:2px; }
+
+.soc-section { margin-bottom:12px; }
+.soc-header { display:flex; justify-content:space-between; font-size:9px; letter-spacing:.15em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+.soc-header span { font-family:var(--font-mono); color:var(--text); }
+.soc-track { height:6px; background:rgba(255,255,255,.06); border-radius:3px; overflow:hidden; }
+.soc-fill { height:100%; border-radius:3px; transition:width .6s cubic-bezier(.4,0,.2,1),background .4s; }
+.soc-markers { display:flex; justify-content:space-between; margin-top:4px; font-size:9px; color:var(--muted); font-family:var(--font-mono); }
+
+.energy-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+.energy-block { border:1px solid var(--border); border-radius:8px; padding:10px 14px; }
+.energy-block .e-label { font-size:9px; color:var(--muted); letter-spacing:.12em; text-transform:uppercase; margin-bottom:4px; }
+.energy-block .e-value { font-family:var(--font-mono); font-size:15px; font-weight:700; }
+.energy-block.delivered .e-value { color:var(--green); }
+.energy-block.absorbed  .e-value { color:var(--red); }
+
+.power-todo { border:1px dashed rgba(245,200,66,.2); border-radius:8px; padding:12px 14px; margin-bottom:12px; display:flex; align-items:center; gap:10px; }
+.power-todo-icon { width:26px; height:26px; border-radius:50%; background:rgba(245,200,66,.1); border:1px solid rgba(245,200,66,.25); display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
+.power-todo-text { font-size:11px; color:var(--muted); line-height:1.5; }
+.power-todo-text b { color:var(--amber); display:block; font-size:12px; }
+
+.mini-chart-wrap { position:relative; height:56px; }
+
+.charts-section { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:24px; }
+.chart-card { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:18px; }
+.chart-card h3 { font-size:10px; color:var(--muted); letter-spacing:.15em; text-transform:uppercase; margin-bottom:14px; }
+
+footer { border-top:1px solid var(--border); padding-top:16px; display:flex; justify-content:space-between; align-items:center; font-family:var(--font-mono); font-size:10px; color:var(--muted); }
+.conn-dot { width:6px; height:6px; border-radius:50%; background:var(--green); display:inline-block; margin-right:6px; animation:pulse 1.5s infinite; }
+
+@media(max-width:900px) { .charts-section { grid-template-columns:1fr; } }
+@media(max-width:600px) { .agents-grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<!-- Loader mientras carga el historial -->
+<div id="loader">
+  <div class="loader-ring"></div>
+  <div class="loader-text" id="loader-text">Conectando a Firebase...</div>
+</div>
+
+<div class="shell">
+  <header>
+    <div class="logo">
+      <div class="logo-mark"></div>
+      <div>
+        <h1>Microrred DC <span>/ Control Room</span></h1>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:2px">3 agentes buck-boost bidireccionales</div>
+      </div>
+    </div>
+    <div class="header-meta">
+      <div id="live-clock">--:--:--</div>
+      <div id="conn-status">Conectando...</div>
+    </div>
+  </header>
+
+  <div class="bus-strip">
+    <div class="bus-metric">
+      <div class="val" id="bus-vbus">—<span>V</span></div>
+      <div class="lbl">V bus promedio</div>
+    </div>
+    <div class="bus-line"></div>
+    <div class="bus-metric">
+      <div class="val" id="bus-i-total">—<span>A</span></div>
+      <div class="lbl">I total</div>
+    </div>
+    <div class="bus-line"></div>
+    <div class="bus-metric">
+      <div class="val" id="bus-e-total">—<span>Ah</span></div>
+      <div class="lbl">E neta acum.</div>
+    </div>
+    <div class="bus-line"></div>
+    <div class="bus-metric">
+      <div class="val" id="bus-uptime">0<span>s</span></div>
+      <div class="lbl">Sesión</div>
+    </div>
+  </div>
+
+  <div class="agents-grid" id="agents-grid"></div>
+
+  <div class="charts-section">
+    <div class="chart-card">
+      <h3>Corriente de salida — 3 agentes (A)</h3>
+      <canvas id="chart-iout" height="130"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Tensión de batería — 3 agentes (V)</h3>
+      <canvas id="chart-vbat" height="130"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Bus DC — 3 agentes con referencia 5 V</h3>
+      <canvas id="chart-vbus" height="130"></canvas>
+    </div>
+  </div>
+
+  <footer>
+    <div><span class="conn-dot"></span>Firebase Realtime Database</div>
+    <div id="last-update">Cargando historial...</div>
+    <div>Historial: últimos 60 puntos por agente</div>
+  </footer>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════
+   ESTADO Y CONSTANTES
+═══════════════════════════════════════════════ */
+const AGENTS  = [1, 2, 3];
+const COLORS  = { 1:'#00e5a0', 2:'#7b6fff', 3:'#f5c842' };
+const MAX_PTS = 60;
+const startTs = Date.now();
+
+const state = {};
+AGENTS.forEach(n => {
+  state[n] = {
+    v_bat:0, v_bus:0, i_out:0, soc:0,
+      power:0,
+    e_deliv:0, e_absorb:0,
+    lastTs: null,
+    history: { i_out:[], v_bat:[], v_bus:[] }
+  };
+});
+
+/* ═══════════════════════════════════════════════
+   STATUS PARA EL LOADER
+═══════════════════════════════════════════════ */
+window.setStatus = function(msg) {
+  document.getElementById('loader-text').textContent = msg;
+  document.getElementById('conn-status').textContent = msg;
+  if (msg.includes('línea')) {
+    setTimeout(() => {
+      document.getElementById('loader').classList.add('hidden');
+    }, 600);
+  }
+};
+
+/* ═══════════════════════════════════════════════
+   SoC DESDE VOLTAJE (Li-ion)
+═══════════════════════════════════════════════ */
+function socFromVoltage(v) {
+  const curve = [
+    [3.00,0.00],[3.20,0.05],[3.50,0.15],[3.70,0.35],
+    [3.80,0.50],[3.90,0.65],[4.00,0.78],[4.10,0.90],[4.20,1.00]
+  ];
+  if (v <= curve[0][0])              return 0;
+  if (v >= curve[curve.length-1][0]) return 1;
+  for (let i=1;i<curve.length;i++) {
+    if (v <= curve[i][0]) {
+      const [v0,s0]=curve[i-1], [v1,s1]=curve[i];
+      return s0 + (s1-s0)*(v-v0)/(v1-v0);
+    }
+  }
+  return 0;
+}
+function socColor(s) {
+  return s < 0.20 ? '#ff4f5e' : s < 0.50 ? '#f5c842' : '#00e5a0';
+}
+
+/* ═══════════════════════════════════════════════
+   CONSTRUIR CARDS
+═══════════════════════════════════════════════ */
+function buildCards() {
+  const grid = document.getElementById('agents-grid');
+  grid.innerHTML = '';
+  AGENTS.forEach(n => {
+    const c = COLORS[n];
+    grid.innerHTML += `
+    <div class="agent-card">
+      <div class="agent-card-header" style="border-bottom-color:rgba(${hexRgb(c)},.15)">
+        <div>
+          <div class="agent-name" style="color:${c}">Agente ${n}</div>
+          <div class="agent-id">ID: AGT-00${n} · buck-boost bidireccional</div>
+        </div>
+        <div class="mode-pill mode-boost" id="mode-${n}">BOOST</div>
+      </div>
+      <div class="agent-body">
+        <div class="metrics-row">
+          <div class="metric-block">
+            <div class="m-label">V batería</div>
+            <div class="m-value" id="vbat-${n}">—<span class="m-unit">V</span></div>
+          </div>
+          <div class="metric-block">
+            <div class="m-label">I salida</div>
+            <div class="m-value" id="iout-${n}">—<span class="m-unit">A</span></div>
+          </div>
+          <div class="metric-block">
+            <div class="m-label">SoC estimado</div>
+            <div class="m-value" id="soc-num-${n}" style="color:${c}">—<span class="m-unit">%</span></div>
+          </div>
+          <div class="metric-block">
+            <div class="m-label">Potencia instantánea</div>
+            <div class="m-value" id="power-${n}" style="color:var(--amber)">—<span class="m-unit">W</span></div>
+          </div>
+        </div>
+        <div class="soc-section">
+          <div class="soc-header">Estado de carga <span id="soc-pct-${n}">—%</span></div>
+          <div class="soc-track"><div class="soc-fill" id="soc-fill-${n}" style="width:0%;background:${c}"></div></div>
+          <div class="soc-markers">
+            <span>0%</span>
+            <span style="color:var(--red);opacity:.7">▲ 50%</span>
+            <span style="color:var(--green);opacity:.7">55% ▲</span>
+            <span>100%</span>
+          </div>
+        </div>
+        <div class="energy-row">
+          <div class="energy-block delivered">
+            <div class="e-label">↑ Entregada</div>
+            <div class="e-value" id="e-deliv-${n}">0.0000 <span style="font-size:10px;color:var(--muted)">Ah</span></div>
+          </div>
+          <div class="energy-block absorbed">
+            <div class="e-label">↓ Absorbida</div>
+            <div class="e-value" id="e-absorb-${n}">0.0000 <span style="font-size:10px;color:var(--muted)">Ah</span></div>
+          </div>
+        </div>
+        <div class="mini-chart-wrap"><canvas id="spark-${n}"></canvas></div>
+      </div>
+    </div>`;
+  });
+}
+
+/* ═══════════════════════════════════════════════
+   PUSH DE PUNTO HISTÓRICO
+   Llamado al cargar historial y al recibir puntos nuevos en tiempo real.
+═══════════════════════════════════════════════ */
+window.pushHistoryPoint = function(n, pt) {
+  const s = state[n];
+  const now = Date.now();
+  const dt  = s.lastTs ? (now - s.lastTs) / 3600000 : 0;
+  const ts  = pt.ts ?? Math.floor(now / 1000);
+
+  /* Solo actualizar lastTs si es un punto nuevo (no del historial cargado) */
+  if (!s.lastTs || pt.ts > (s.lastTs / 1000)) {
+    s.v_bat  = pt.v_bat ?? s.v_bat;
+    s.v_bus  = pt.v_bus ?? s.v_bus;
+    s.i_out  = pt.i_out ?? s.i_out;
+    s.soc    = socFromVoltage(s.v_bat);
+    s.power  = s.v_bus * s.i_out;
+    s.lastTs = now;
+
+    if (dt > 0) {
+      if (s.i_out > 0) s.e_deliv  += s.i_out * dt;
+      else             s.e_absorb += Math.abs(s.i_out) * dt;
+    }
+  }
+
+  /* Agregar al historial local para los charts */
+  s.history.i_out.push(pt.i_out ?? 0);
+  s.history.v_bat.push({ x: ts, y: pt.v_bat ?? 0 });
+  s.history.v_bus.push({ x: ts, y: pt.v_bus ?? 0 });
+  if (s.history.i_out.length > MAX_PTS) s.history.i_out.shift();
+  if (s.history.v_bat.length > MAX_PTS) s.history.v_bat.shift();
+  if (s.history.v_bus.length > MAX_PTS) s.history.v_bus.shift();
+
+  updateSpark(n);
+  updateGlobalCharts();
+};
+
+/* ═══════════════════════════════════════════════
+   ACTUALIZAR AGENTE (valores en tiempo real)
+   Llamado por el listener de /agentes
+═══════════════════════════════════════════════ */
+window.actualizarAgente = function(n, data) {
+  const s     = state[n];
+  s.v_bus     = data.v_bus  ?? s.v_bus;
+  s.v_bat     = data.v_bat  ?? s.v_bat;
+  s.i_out     = data.i_out  ?? s.i_out;
+  s.soc       = socFromVoltage(s.v_bat);
+  s.power     = s.v_bus * s.i_out;
+
+  const sign  = s.i_out >= 0 ? '+' : '';
+  const iCol  = s.i_out >= 0 ? 'var(--green)' : 'var(--red)';
+  const mode  = s.i_out >= 0 ? 'BOOST' : 'BUCK';
+  const mCls  = s.i_out >= 0 ? 'mode-pill mode-boost' : 'mode-pill mode-buck';
+
+  setText(`vbat-${n}`, s.v_bat.toFixed(3) + '<span class="m-unit">V</span>');
+  setText(`iout-${n}`, sign + s.i_out.toFixed(3) + '<span class="m-unit">A</span>');
+  setText(`soc-num-${n}`, (s.soc*100).toFixed(1) + '<span class="m-unit">%</span>');
+  setText(`soc-pct-${n}`, (s.soc*100).toFixed(1) + '%');
+  setText(`power-${n}`, (s.power >= 0 ? '+' : '') + s.power.toFixed(2) + '<span class="m-unit">W</span>');
+  setText(`e-deliv-${n}`,  s.e_deliv.toFixed(4)  + ' <span style="font-size:10px;color:var(--muted)">Ah</span>');
+  setText(`e-absorb-${n}`, s.e_absorb.toFixed(4) + ' <span style="font-size:10px;color:var(--muted)">Ah</span>');
+
+  const fill = document.getElementById(`soc-fill-${n}`);
+  if (fill) { fill.style.width = (s.soc*100).toFixed(1)+'%'; fill.style.background = socColor(s.soc); }
+
+  const ival = document.getElementById(`iout-${n}`);
+  if (ival) ival.style.color = iCol;
+
+  const pval = document.getElementById(`power-${n}`);
+  if (pval) pval.style.color = s.power >= 0 ? 'var(--green)' : 'var(--red)';
+
+  const pill = document.getElementById(`mode-${n}`);
+  if (pill) { pill.textContent = mode; pill.className = mCls; }
+
+  const liveTs = Math.floor(Date.now() / 1000);
+  s.history.i_out.push(s.i_out);
+  s.history.v_bat.push({ x: liveTs, y: s.v_bat });
+  s.history.v_bus.push({ x: liveTs, y: s.v_bus });
+  if (s.history.i_out.length > MAX_PTS) s.history.i_out.shift();
+  if (s.history.v_bat.length > MAX_PTS) s.history.v_bat.shift();
+  if (s.history.v_bus.length > MAX_PTS) s.history.v_bus.shift();
+
+  updateBusStrip();
+  updateSpark(n);
+  updateGlobalCharts();
+
+  document.getElementById('conn-status').textContent = 'Firebase · En línea';
+  document.getElementById('last-update').textContent =
+    'Últ. actualización: ' + new Date().toLocaleTimeString();
+};
+
+/* ── Bus strip ── */
+function updateBusStrip() {
+  const vbusVals = AGENTS.map(n=>state[n].v_bus).filter(v=>v>0);
+  const vbusAvg  = vbusVals.length ? vbusVals.reduce((a,b)=>a+b,0)/vbusVals.length : 0;
+  const iTotal   = AGENTS.reduce((a,n)=>a+state[n].i_out,0);
+  const eTotal   = AGENTS.reduce((a,n)=>a+(state[n].e_deliv-state[n].e_absorb),0);
+  setText('bus-vbus',    vbusAvg.toFixed(3)+'<span>V</span>');
+  setText('bus-i-total', (iTotal>=0?'+':'')+iTotal.toFixed(3)+'<span>A</span>');
+  setText('bus-e-total', (eTotal>=0?'+':'')+eTotal.toFixed(4)+'<span>Ah</span>');
+}
+
+/* ═══════════════════════════════════════════════
+   SPARKLINES
+═══════════════════════════════════════════════ */
+const sparks = {};
+function initSparks() {
+  AGENTS.forEach(n => {
+    const ctx = document.getElementById(`spark-${n}`);
+    if (!ctx) return;
+    sparks[n] = new Chart(ctx, {
+      type:'line',
+      data:{
+        labels: Array(MAX_PTS).fill(''),
+        datasets:[{ data:Array(MAX_PTS).fill(null),
+          borderColor:COLORS[n], borderWidth:1.5, pointRadius:0,
+          fill:true, backgroundColor:hexAlpha(COLORS[n],.08), tension:.4 }]
+      },
+      options:{
+        animation:false, responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{x:{display:false},y:{display:false}}
+      }
+    });
+  });
+}
+function updateSpark(n) {
+  if (!sparks[n]) return;
+  sparks[n].data.datasets[0].data = [...state[n].history.i_out];
+  sparks[n].update('none');
+}
+
+/* ═══════════════════════════════════════════════
+   CHARTS GLOBALES
+═══════════════════════════════════════════════ */
+let chartIout, chartVbat, chartVbus;
+function initGlobalCharts() {
+  const mkDS = n => ({
+    label:'Agente '+n, data:Array(MAX_PTS).fill(null),
+    borderColor:COLORS[n], borderWidth:1.5, pointRadius:0, fill:false, tension:.3
+  });
+  const opts = (ymin,ymax) => ({
+    animation:false, responsive:true,
+    plugins:{legend:{display:true,labels:{color:'#5a5f6b',font:{family:'Space Mono',size:10},boxWidth:12,padding:12}}},
+    scales:{
+      x:{display:false},
+      y:{min:ymin,max:ymax,
+         grid:{color:'rgba(255,255,255,0.04)'},
+         ticks:{color:'#5a5f6b',font:{family:'Space Mono',size:10}}}
+    }
+  });
+  chartIout = new Chart(document.getElementById('chart-iout'),
+    {type:'line',data:{labels:Array(MAX_PTS).fill(''),datasets:AGENTS.map(mkDS)},options:opts(-2.5,2.5)});
+  chartVbat = new Chart(document.getElementById('chart-vbat'),
+    {type:'line',data:{datasets:AGENTS.map(n => ({
+      label:'Agente '+n,
+      data:[],
+      borderColor:COLORS[n],
+      borderWidth:1.5,
+      pointRadius:0,
+      fill:false,
+      tension:.3
+    }))},options:{
+      animation:false,
+      responsive:true,
+      plugins:{legend:{display:true,labels:{color:'#5a5f6b',font:{family:'Space Mono',size:10},boxWidth:12,padding:12}}},
+      scales:{
+        x:{
+          type:'linear',
+          grid:{color:'rgba(255,255,255,0.04)'},
+          ticks:{
+            color:'#5a5f6b',
+            font:{family:'Space Mono',size:10},
+            callback:value => new Date(Number(value) * 1000).toLocaleTimeString('es-CL', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false })
+          }
+        },
+        y:{
+          min:3.2,
+          max:4.3,
+          grid:{color:'rgba(255,255,255,0.04)'},
+          ticks:{color:'#5a5f6b',font:{family:'Space Mono',size:10}}
+        }
+      }
+    }});
+  chartVbus = new Chart(document.getElementById('chart-vbus'),
+    {type:'line',data:{datasets:[
+      ...AGENTS.map(n => ({
+        label:'Agente '+n,
+        data:[],
+        borderColor:COLORS[n],
+        borderWidth:1.5,
+        pointRadius:0,
+        fill:false,
+        tension:.3
+      })),
+      {
+        label:'Referencia 5 V',
+        data:[],
+        borderColor:'#ffffff',
+        borderWidth:1.2,
+        borderDash:[6,6],
+        pointRadius:0,
+        fill:false,
+        tension:0
+      }
+    ]},options:{
+      animation:false,
+      responsive:true,
+      plugins:{legend:{display:true,labels:{color:'#5a5f6b',font:{family:'Space Mono',size:10},boxWidth:12,padding:12}}},
+      scales:{
+        x:{
+          type:'linear',
+          grid:{color:'rgba(255,255,255,0.04)'},
+          ticks:{
+            color:'#5a5f6b',
+            font:{family:'Space Mono',size:10},
+            callback:value => new Date(Number(value) * 1000).toLocaleTimeString('es-CL', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false })
+          }
+        },
+        y:{
+          min:4.5,
+          max:5.5,
+          grid:{color:'rgba(255,255,255,0.04)'},
+          ticks:{color:'#5a5f6b',font:{family:'Space Mono',size:10}}
+        }
+      }
+    }});
+}
+function updateGlobalCharts() {
+  let minTs = Infinity;
+  let maxTs = -Infinity;
+  AGENTS.forEach((n,i) => {
+    chartIout.data.datasets[i].data = [...state[n].history.i_out];
+    chartVbat.data.datasets[i].data = [...state[n].history.v_bat];
+    chartVbus.data.datasets[i].data = [...state[n].history.v_bus];
+    state[n].history.v_bus.forEach(pt => {
+      if (pt && typeof pt.x === 'number') {
+        minTs = Math.min(minTs, pt.x);
+        maxTs = Math.max(maxTs, pt.x);
+      }
+    });
+  });
+  if (!Number.isFinite(minTs) || !Number.isFinite(maxTs)) {
+    const now = Math.floor(Date.now() / 1000);
+    minTs = now - 1;
+    maxTs = now;
+  }
+  chartVbus.data.datasets[AGENTS.length].data = [
+    { x: minTs, y: 5 },
+    { x: maxTs, y: 5 }
+  ];
+  chartIout.update('none');
+  chartVbat.update('none');
+  chartVbus.update('none');
+}
+
+/* ═══════════════════════════════════════════════
+   UTILIDADES
+═══════════════════════════════════════════════ */
+function setText(id,html) { const e=document.getElementById(id); if(e) e.innerHTML=html; }
+function hexRgb(h) {
+  return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)].join(',');
+}
+function hexAlpha(h,a) { return `rgba(${hexRgb(h)},${a})`; }
+
+setInterval(() => {
+  document.getElementById('live-clock').textContent = new Date().toLocaleTimeString('es-CL');
+  const s=Math.floor((Date.now()-startTs)/1000);
+  const fmt=s<60?s+'s':s<3600?Math.floor(s/60)+'m '+s%60+'s':Math.floor(s/3600)+'h '+Math.floor((s%3600)/60)+'m';
+  setText('bus-uptime', fmt+'<span>  </span>');
+}, 1000);
+
+/* ── Init ── */
+buildCards();
+initSparks();
+initGlobalCharts();
+</script>
+</body>
+</html>
