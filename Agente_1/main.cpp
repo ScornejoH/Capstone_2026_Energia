@@ -28,6 +28,9 @@
 #include <Wire.h>
 #include <Adafruit_ADS1X15.h>
 #include <math.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 
 /* ─────────────────────────────────────────────
    CONFIGURACIÓN — rellena estos valores
@@ -112,6 +115,72 @@ static bool  firebase_patch(const String& path, const String& body);
 static void  generar_datos(float t, float* vbat, float* vbus,
                             float* iout, const AgentSim_t* ag);
 static float ruido(float amp);
+/* Control task prototypes (from boost) */
+static void controlTask(void* pvParameters);
+static void commsTask(void* pvParameters);
+
+/* Gate / control pins */
+#define PIN_PWM_HIGH 25
+#define PIN_PWM_LOW  26
+
+/* Control parameters (defaults mainly copied from boost.cpp) */
+static float voutTarget = 5.00f;
+static float voutTrip = 5.65f;
+static float voutWarn = 5.30f;
+
+static float vinMinTrip = 3.00f;
+static float vinWarn = 3.20f;
+
+static float kp = 5.0f;
+static float ki = 0.8f;
+static float ffScale = 1.20f;
+
+static float piIntegral = 0.0f;
+static float tonCmdUs = 0.0f;
+
+static float tonMinUs = 0.0f;
+static float tonMaxUs = 35.0f;
+static float tonHardMaxUs = 45.0f;
+
+static float maxTonStepUpUs = 1.0f;
+static float maxTonStepDownUs = 2.0f;
+
+static float tonFracAcc = 0.0f;
+
+static const unsigned long CONTROL_PERIOD_MS = 20;
+
+/* Run modes */
+enum RunMode {
+   MODE_OFF,
+   MODE_MANUAL,
+   MODE_AUTO_FFPI
+};
+
+static RunMode runMode = MODE_OFF;
+static bool faultLatched = false;
+
+/* Measurements shared between tasks */
+static float vin_ag1 = 0.0f;
+static float vout_bus = 0.0f;
+
+/* Manual ton in case of manual mode */
+static float manualTonUs = 10.0f;
+
+/* Synchronization for ADS1115 access */
+static SemaphoreHandle_t adsMutex = NULL;
+
+/* Utility prototypes for control */
+static uint32_t computeDitheredTon(float tonUs);
+static void runBoostCycle(float tonUs);
+static float computeBoostFeedforwardTon();
+static void updateFFPI();
+static bool updateVout();
+static bool updateVin();
+static bool updateAllMeasurements();
+static float clampFloat(float x, float xmin, float xmax);
+static float slewLimitAsym(float current, float target, float maxUp, float maxDown);
+static void tripFault(const char* reason);
+static void clearFault();
 
 /* ═══════════════════════════════════════════════
    SETUP
@@ -144,67 +213,324 @@ void setup() {
 }
 
 /* ═══════════════════════════════════════════════
-   LOOP — genera y envía datos cada SEND_INTERVAL_MS
+   FreeRTOS tasks
+   - controlTask: runs boost control loop on a dedicated core
+   - commsTask: generates JSON and sends to Firebase, runs on other core
    ═══════════════════════════════════════════════ */
-void loop() {
-    /* ── 1. Generar datos ficticios para los 3 agentes ── */
-    float vbat[3], vbus[3], iout[3];
 
-    for (int i = 0; i < 3; i++) {
-        generar_datos(t_sim, &vbat[i], &vbus[i], &iout[i], &sims[i]);
-    }
+static void printStatus();
 
-   if (ads_ok) {
-      /* v_bat se reemplaza con medición real; v_bus e i_out siguen ficticios. */
-     leer_vbat_ads(vbat);
+void setup() {
+   Serial.begin(115200);
+   delay(300);
+
+   Serial.println("\n╔════════════════════════════════════════╗");
+   Serial.println("║  ESP32 Firebase Test — 3 Agentes Fake ║");
+   Serial.println("╚════════════════════════════════════════╝\n");
+
+   randomSeed(esp_random());
+
+   /* Omitir verificación de certificado SSL (solo para pruebas). */
+   client.setInsecure();
+
+   wifi_connect();
+   ads_ok = ads_init();
+
+   /* Create mutex for ADS access */
+   adsMutex = xSemaphoreCreateMutex();
+
+   /* Initialize authentication (optional) */
+   if (!firebase_login()) {
+      Serial.println("[WARN] No se pudo autenticar en Firebase. Se intentará luego.");
    }
 
-    t_sim += SEND_INTERVAL_MS / 1000.0f;
+   /* Configure gate pins for boost control */
+   pinMode(PIN_PWM_HIGH, OUTPUT);
+   pinMode(PIN_PWM_LOW, OUTPUT);
+   digitalWrite(PIN_PWM_HIGH, HIGH); // high-side OFF (as in boost.cpp)
+   digitalWrite(PIN_PWM_LOW, LOW);   // low-side OFF
 
-    /* ── 2. Construir JSON con ArduinoJson ── */
-    /*
-       Estructura enviada:
-       {
-         "agente1": { "v_bat": 4.02, "v_bus": 4.98, "i_out": 1.45 },
-         "agente2": { "v_bat": 3.77, "v_bus": 5.01, "i_out": -0.32 },
-         "agente3": { "v_bat": 3.51, "v_bus": 4.96, "i_out": -0.88 }
-       }
-    */
-   StaticJsonDocument<512> doc;
+   /* Create tasks: comms on core 0, control on core 1 */
+   xTaskCreatePinnedToCore(commsTask, "commsTask", 6 * 1024, NULL, 1, NULL, 0);
+   xTaskCreatePinnedToCore(controlTask, "controlTask", 6 * 1024, NULL, 2, NULL, 1);
 
-    for (int i = 0; i < 3; i++) {
-        JsonObject ag = doc.createNestedObject(sims[i].id);
-        ag["v_bat"] = roundf(vbat[i] * 1000.0f) / 1000.0f;  /* 3 decimales */
-        ag["v_bus"] = roundf(vbus[i] * 1000.0f) / 1000.0f;
-        ag["i_out"] = roundf(iout[i] * 1000.0f) / 1000.0f;
-    }
+   Serial.println("[INFO] Tasks created: control@core1, comms@core0");
+   Serial.println("[INFO] Listo. Enviando datos cada " + String(SEND_INTERVAL_MS) + " ms...\n");
+   Serial.println("  Agente | V_bat (V) | V_bus (V) | I_out (A) | Modo");
+   Serial.println("  -------|-----------|-----------|-----------|------");
 
-    String body;
-    serializeJson(doc, body);
+   /* Delete setup task if desired; keep it lightweight */
+}
 
-   /* ── 3. Enviar a Firebase ── */
-   check_token_refresh();
-   bool ok = firebase_patch(String(FIREBASE_PATH), body);
+void loop() {
+   delay(1000);
+}
 
-      /* ── 4. Imprimir resultado en consola ── */
-   for (int i = 0; i < 3; i++) {
-     Serial.printf("  %s |   %.3f   |   %.3f   |   %.3f   | %s\n",
-                     sims[i].id, vbat[i], vbus[i], iout[i],
-                     ok ? "OK" : "ERROR");
-                  }
+/* commsTask: builds JSON and sends to Firebase on a dedicated core */
+static void commsTask(void* pvParameters) {
+   (void)pvParameters;
 
+   for (;;) {
+      /* Generate simulated data */
+      float vbat[3], vbus[3], iout[3];
 
-    if (!ok) {
-        Serial.println("  [WARN] Fallo al enviar. Reintentando en el próximo ciclo.");
-    }
+      for (int i = 0; i < 3; i++) {
+         generar_datos(t_sim, &vbat[i], &vbus[i], &iout[i], &sims[i]);
+      }
 
-    /* ── 5. Reconectar WiFi si se cae ── */
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("[WARN] WiFi desconectado. Reconectando...");
-        wifi_connect();
-    }
+      /* If ADS present, read Vbat (shared resource) */
+      if (ads_ok) {
+         if (adsMutex && xSemaphoreTake(adsMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            leer_vbat_ads(vbat);
+            xSemaphoreGive(adsMutex);
+         }
+      }
 
-    delay(SEND_INTERVAL_MS);
+      t_sim += SEND_INTERVAL_MS / 1000.0f;
+
+      /* Build JSON */
+      StaticJsonDocument<512> doc;
+      for (int i = 0; i < 3; i++) {
+         JsonObject ag = doc.createNestedObject(sims[i].id);
+         ag["v_bat"] = roundf(vbat[i] * 1000.0f) / 1000.0f;
+         ag["v_bus"] = roundf(vbus[i] * 1000.0f) / 1000.0f;
+         ag["i_out"] = roundf(iout[i] * 1000.0f) / 1000.0f;
+      }
+
+      String body;
+      serializeJson(doc, body);
+
+      check_token_refresh();
+      bool ok = firebase_patch(String(FIREBASE_PATH), body);
+
+      for (int i = 0; i < 3; i++) {
+         Serial.printf("  %s |   %.3f   |   %.3f   |   %.3f   | %s\n",
+                    sims[i].id, vbat[i], vbus[i], iout[i],
+                    ok ? "OK" : "ERROR");
+      }
+
+      if (!ok) {
+         Serial.println("  [WARN] Fallo al enviar. Reintentando en el próximo ciclo.");
+      }
+
+      if (WiFi.status() != WL_CONNECTED) {
+         Serial.println("[WARN] WiFi desconectado. Reconectando...");
+         wifi_connect();
+      }
+
+      vTaskDelay(pdMS_TO_TICKS(SEND_INTERVAL_MS));
+   }
+}
+
+/* controlTask: implements the boost control loop using ADS1115 via ads object */
+static void controlTask(void* pvParameters) {
+   (void)pvParameters;
+   unsigned long lastControlMs = millis();
+
+   for (;;) {
+      unsigned long nowMs = millis();
+      if (nowMs - lastControlMs >= CONTROL_PERIOD_MS) {
+         lastControlMs = nowMs;
+
+         bool okVout = updateVout();
+         static unsigned long lastVinReadMs = 0;
+         if (nowMs - lastVinReadMs >= 200) {
+            lastVinReadMs = nowMs;
+            updateVin();
+         }
+
+         if (okVout) {
+            if (vout_bus > voutTrip) {
+               tripFault("VOUT sobre limite");
+            }
+
+            if (vin_ag1 < vinMinTrip) {
+               tripFault("VIN bajo limite");
+            }
+
+            if (runMode == MODE_AUTO_FFPI && !faultLatched) {
+               updateFFPI();
+            }
+         }
+         else {
+            Serial.println("Lectura VOUT fallida");
+         }
+
+         /* Actuate depending on mode */
+         if (runMode == MODE_OFF || faultLatched) {
+            digitalWrite(PIN_PWM_HIGH, HIGH);
+            digitalWrite(PIN_PWM_LOW, LOW);
+         }
+         else if (runMode == MODE_MANUAL) {
+            runBoostCycle(manualTonUs);
+         }
+         else if (runMode == MODE_AUTO_FFPI) {
+            runBoostCycle(tonCmdUs);
+         }
+      }
+
+      /* Print periodic status */
+      static unsigned long lastPrintMs = 0;
+      if (millis() - lastPrintMs >= 1000) {
+         lastPrintMs = millis();
+         printStatus();
+      }
+
+      vTaskDelay(pdMS_TO_TICKS(5));
+   }
+}
+
+/* ------------------ control helper implementations ------------------ */
+static float clampFloat(float x, float xmin, float xmax) {
+   if (x < xmin) return xmin;
+   if (x > xmax) return xmax;
+   return x;
+}
+
+static float slewLimitAsym(float current, float target, float maxUp, float maxDown) {
+   if (target > current + maxUp) return current + maxUp;
+   if (target < current - maxDown) return current - maxDown;
+   return target;
+}
+
+uint32_t computeDitheredTon(float tonUs) {
+   tonUs = clampFloat(tonUs, tonMinUs, tonMaxUs);
+   if (tonUs <= 0.0f) { tonFracAcc = 0.0f; return 0; }
+   float baseF = floorf(tonUs);
+   float frac = tonUs - baseF;
+   uint32_t tonInt = (uint32_t)baseF;
+   tonFracAcc += frac;
+   if (tonFracAcc >= 1.0f) { tonInt += 1; tonFracAcc -= 1.0f; }
+   if (tonInt > (uint32_t)tonMaxUs) tonInt = (uint32_t)tonMaxUs;
+   return tonInt;
+}
+
+void runBoostCycle(float tonUs) {
+   const uint32_t T_PERIOD_US = 100;
+   digitalWrite(PIN_PWM_HIGH, HIGH); // highOff
+   if (tonUs <= 0.0f) {
+      digitalWrite(PIN_PWM_LOW, LOW); // lowOff
+      delayMicroseconds(T_PERIOD_US);
+      return;
+   }
+   uint32_t tonInt = computeDitheredTon(tonUs);
+   if (tonInt == 0) { digitalWrite(PIN_PWM_LOW, LOW); delayMicroseconds(T_PERIOD_US); return; }
+   digitalWrite(PIN_PWM_LOW, HIGH); // lowOn
+   delayMicroseconds(tonInt);
+   digitalWrite(PIN_PWM_LOW, LOW); // lowOff
+   if (tonInt < T_PERIOD_US) delayMicroseconds(T_PERIOD_US - tonInt);
+}
+
+float computeBoostFeedforwardTon() {
+   if (vin_ag1 <= 0.1f || voutTarget <= vin_ag1) return 0.0f;
+   float dutyIdeal = 1.0f - (vin_ag1 / voutTarget);
+   dutyIdeal = clampFloat(dutyIdeal, 0.0f, 0.85f);
+   float tonIdeal = dutyIdeal * 100.0f;
+   return ffScale * tonIdeal;
+}
+
+void updateFFPI() {
+   if (vout_bus > voutTrip) { tripFault("VOUT sobre limite"); return; }
+   if (vin_ag1 < vinMinTrip) { tripFault("VIN bajo limite"); return; }
+   float dt = CONTROL_PERIOD_MS / 1000.0f;
+   float error = voutTarget - vout_bus;
+   if (error <= -0.08f) { piIntegral *= 0.5f; tonCmdUs = slewLimitAsym(tonCmdUs, 0.0f, maxTonStepUpUs, maxTonStepDownUs); return; }
+   if (error <= 0.00f) { piIntegral *= 0.8f; tonCmdUs = slewLimitAsym(tonCmdUs, 0.0f, maxTonStepUpUs, maxTonStepDownUs); return; }
+   piIntegral += error * dt;
+   piIntegral = clampFloat(piIntegral, -4.0f, 4.0f);
+   float tonFF = computeBoostFeedforwardTon();
+   float tonPI = kp * error + ki * piIntegral;
+   float tonTarget = tonFF + tonPI;
+   if (error > 1.00f) { tonTarget = fmaxf(tonTarget, 28.0f); }
+   else if (error > 0.70f) { tonTarget = fmaxf(tonTarget, 24.0f); }
+   else if (error > 0.45f) { tonTarget = fmaxf(tonTarget, 20.0f); }
+   tonTarget = clampFloat(tonTarget, 0.0f, tonMaxUs);
+   tonCmdUs = slewLimitAsym(tonCmdUs, tonTarget, maxTonStepUpUs, maxTonStepDownUs);
+}
+
+/* ADS1115-based measurement helpers using existing 'ads' object */
+bool updateVout() {
+   if (!adsMutex || xSemaphoreTake(adsMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+      return false;
+   }
+   int16_t raw = ads.readADC_SingleEnded(0);
+   float a0 = ads.computeVolts(raw);
+   xSemaphoreGive(adsMutex);
+   if (isnan(a0)) return false;
+   const float DIV_FACTOR_A0 = 3.12f; // from boost
+   vout_bus = a0 * DIV_FACTOR_A0;
+   return true;
+}
+
+bool updateVin() {
+   if (!adsMutex || xSemaphoreTake(adsMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+      return false;
+   }
+   int16_t raw = ads.readADC_SingleEnded(1);
+   float a1 = ads.computeVolts(raw);
+   xSemaphoreGive(adsMutex);
+   if (isnan(a1)) return false;
+   const float DIV_FACTOR_A1 = 3.10f;
+   vin_ag1 = a1 * DIV_FACTOR_A1;
+   return true;
+}
+
+bool updateAllMeasurements() {
+   bool ok0 = updateVout();
+   bool ok1 = updateVin();
+   return ok0 && ok1;
+}
+
+void tripFault(const char* reason) {
+   faultLatched = true;
+   runMode = MODE_OFF;
+   tonFracAcc = 0.0f;
+   digitalWrite(PIN_PWM_HIGH, HIGH);
+   digitalWrite(PIN_PWM_LOW, LOW);
+   Serial.print("FAULT: ");
+   Serial.println(reason);
+}
+
+void clearFault() {
+   faultLatched = false;
+   runMode = MODE_OFF;
+   piIntegral = 0.0f;
+   tonCmdUs = 0.0f;
+   tonFracAcc = 0.0f;
+   digitalWrite(PIN_PWM_HIGH, HIGH);
+   digitalWrite(PIN_PWM_LOW, LOW);
+   Serial.println("Fault limpiada. Estado: OFF");
+}
+
+void printStatus() {
+   Serial.println();
+   Serial.print("RunMode = ");
+   if (runMode == MODE_OFF) Serial.print("OFF");
+   else if (runMode == MODE_MANUAL) Serial.print("MANUAL");
+   else if (runMode == MODE_AUTO_FFPI) Serial.print("AUTO_FFPI");
+   Serial.print(" | Fault = ");
+   Serial.print(faultLatched ? "SI" : "NO");
+   Serial.print(" | VIN_AG1 = ");
+   Serial.print(vin_ag1, 3);
+   Serial.print(" V");
+   Serial.print(" | VOUT_BUS = ");
+   Serial.print(vout_bus, 3);
+   Serial.print(" V");
+   Serial.print(" | Target = ");
+   Serial.print(voutTarget, 2);
+   Serial.print(" V");
+   Serial.print(" | Ton = ");
+   Serial.print(tonCmdUs, 3);
+   Serial.print(" us");
+   Serial.print(" | TonMax = ");
+   Serial.print(tonMaxUs, 2);
+   Serial.print(" us");
+   Serial.print(" | Kp = ");
+   Serial.print(kp, 2);
+   Serial.print(" | Ki = ");
+   Serial.print(ki, 2);
+   Serial.print(" | ffScale = ");
+   Serial.println(ffScale, 2);
 }
 
 /* ═══════════════════════════════════════════════
