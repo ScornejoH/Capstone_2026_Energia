@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Configuración Agente 3 · Buckboost + PV/MPPT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0e1621;--bg2:#16202e;--bg3:#1c2a3a;--border:rgba(143,163,189,0.14);
+  --text:#eef4fb;--muted:#8fa3bd;
+  --green:#16b399;--red:#e2504a;--amber:#f0a92b;--blue:#3d8ce0;--purple:#7b6fff;
+  --font-mono:'Space Mono',monospace;--font-ui:'Syne',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font-ui);background:var(--bg);color:var(--text);min-height:100vh;}
+.shell{max-width:1240px;margin:0 auto;padding:24px 20px 48px;}
+header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.logo{display:flex;align-items:center;gap:14px;}
+.logo-mark{width:34px;height:34px;border:2px solid var(--amber);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+h1{font-size:18px;font-weight:800;letter-spacing:.04em;}
+h1 span{color:var(--muted);font-weight:400;}
+.nav-link{font-family:var(--font-mono);font-size:11px;color:var(--muted);text-decoration:none;padding:6px 12px;border:1px solid var(--border);border-radius:6px;transition:.2s;}
+.nav-link:hover{border-color:var(--green);color:var(--green);}
+.fb-badge{font-family:var(--font-mono);font-size:10px;padding:4px 10px;border-radius:6px;background:rgba(255,167,38,.08);border:1px solid rgba(255,167,38,.25);color:#ffa726;letter-spacing:.06em;}
+
+.conn-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;}
+.conn-on{background:var(--green);animation:pulse 1.5s ease-in-out infinite;}
+.conn-off{background:var(--red);}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+.conn-label{font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;}
+
+.fault-banner{display:none;background:rgba(226,80,74,.1);border:1px solid rgba(226,80,74,.35);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-family:var(--font-mono);font-size:11px;color:var(--red);gap:10px;}
+.sensor-banner{display:none;background:rgba(240,169,43,.10);border:1px solid rgba(240,169,43,.35);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-family:var(--font-mono);font-size:11px;color:var(--amber);gap:10px;}
+
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;}
+@media(max-width:820px){.charts-row{grid-template-columns:1fr;}}
+.chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;}
+.chart-card canvas{height:170px!important;}
+.chart-label{font-family:var(--font-mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+
+.status-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin-bottom:16px;}
+.stat-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;}
+.stat-card .s-label{font-size:8px;letter-spacing:.16em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
+.stat-card .s-value{font-family:var(--font-mono);font-size:18px;font-weight:700;line-height:1;}
+.stat-card .s-unit{font-size:10px;color:var(--muted);margin-left:2px;}
+.col-green{color:var(--green);}.col-amber{color:var(--amber);}.col-blue{color:var(--blue);}.col-purple{color:var(--purple);}
+.soc-bar-wrap{margin-top:6px;height:4px;background:var(--bg2);border-radius:2px;overflow:hidden;}
+.soc-bar-fill{height:100%;border-radius:2px;transition:width .5s,background .5s;}
+
+.pills-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+.mode-pill{display:inline-block;font-family:var(--font-mono);font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:.08em;text-transform:uppercase;}
+.pill-ON,.pill-BOOST{background:rgba(22,179,153,.12);color:var(--green);border:1px solid rgba(22,179,153,.25);}
+.pill-OFF,.pill--{background:rgba(90,95,107,.12);color:var(--muted);border:1px solid rgba(90,95,107,.25);}
+.pill-BUCK{background:rgba(91,156,246,.12);color:var(--blue);border:1px solid rgba(91,156,246,.25);}
+.pill-info{background:rgba(181,123,245,.12);color:var(--purple);border:1px solid rgba(181,123,245,.25);}
+
+.btn-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
+.btn{font-family:var(--font-mono);font-size:11px;font-weight:700;padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;letter-spacing:.05em;transition:.15s;}
+.btn:hover{border-color:var(--blue);color:var(--blue);}
+.btn:active{transform:scale(.97);}
+.btn.green{background:rgba(22,179,153,.08);border-color:rgba(22,179,153,.35);color:var(--green);}
+.btn.red{background:rgba(226,80,74,.08);border-color:rgba(226,80,74,.35);color:var(--red);}
+.btn.amber{background:rgba(240,169,43,.08);border-color:rgba(240,169,43,.35);color:var(--amber);}
+.btn.purple{background:rgba(181,123,245,.08);border-color:rgba(181,123,245,.35);color:var(--purple);}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+@media(max-width:900px){.grid2{grid-template-columns:1fr;}}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:18px;}
+.cfg-title{font-size:13px;font-weight:800;letter-spacing:.03em;margin-bottom:4px;}
+.cfg-sub{font-family:var(--font-mono);font-size:9px;color:var(--muted);margin-bottom:14px;line-height:1.7;}
+.param-list{display:flex;flex-direction:column;gap:9px;}
+.param-row{display:grid;grid-template-columns:1fr 110px 70px;align-items:center;gap:8px;}
+.param-row label{font-size:11px;color:var(--muted);font-family:var(--font-mono);}
+.param-row input[type=number]{background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;font-family:var(--font-mono);font-size:12px;width:100%;}
+.param-row input[type=number]:focus{outline:none;border-color:var(--blue);}
+.current-val{font-family:var(--font-mono);font-size:11px;color:var(--amber);text-align:right;}
+.omega-note{font-family:var(--font-mono);font-size:9px;color:var(--purple);margin-top:10px;padding:6px 10px;background:rgba(181,123,245,.06);border-radius:6px;border-left:2px solid rgba(181,123,245,.3);}
+.sep{height:1px;background:var(--border);margin:14px 0;}
+.cal-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px;}
+.cal-lbl{flex:1;min-width:150px;font-family:var(--font-mono);font-size:10px;color:var(--muted);}
+.cal-lbl b{color:var(--text);}
+.cal-row input[type=number]{width:90px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-family:var(--font-mono);font-size:11px;}
+.cal-row select.cal-sel{background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-family:var(--font-mono);font-size:11px;cursor:pointer;}
+.cal-row select.cal-sel:focus{outline:none;border-color:var(--blue);}
+.cal-row .btn{padding:6px 10px;font-size:10px;}
+.log-panel{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:18px;}
+.log-panel h3{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-family:var(--font-mono);}
+#log-box{font-family:var(--font-mono);font-size:11px;color:var(--muted);height:140px;overflow-y:auto;background:var(--bg3);border-radius:8px;padding:10px 12px;line-height:1.8;}
+#log-box p{margin:0;}#log-box p.fault{color:var(--red);}#log-box p.ok{color:var(--green);}#log-box p.cmd{color:var(--blue);}
+.last-update{font-family:var(--font-mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:14px 0 4px;}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <div class="logo">
+      <div class="logo-mark">☀</div>
+      <h1>AGENTE 3 <span>· Buckboost 2S↔Bus + PV/MPPT</span></h1>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <span class="fb-badge">⬤ AUTH ANÓNIMA</span>
+      <a class="nav-link" href="control_can.html">← Multi-Agente</a>
+      <a class="nav-link" href="index.html">Dashboard</a>
+    </div>
+  </header>
+
+  <!-- ── Estado / conexión ── -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+    <span><span id="a3-dot" class="conn-dot conn-off"></span><span id="a3-conn" class="conn-label">offline</span></span>
+    <span class="last-update" id="a3-ts" style="margin:0;">—</span>
+  </div>
+
+  <div id="bb-fault" class="fault-banner">⚠ <span id="bb-fault-msg"></span></div>
+  <div id="pv-fault" class="fault-banner">⚠ <span id="pv-fault-msg"></span></div>
+  <div id="sensor-banner" class="sensor-banner">⚠ <span id="sensor-msg"></span></div>
+
+  <!-- ── Pills de estado ── -->
+  <div class="pills-row">
+    <span class="mode-pill pill--" id="p-run">OFF</span>
+    <span class="mode-pill pill--" id="p-topo">–</span>
+    <span class="mode-pill pill-info" id="p-pvmode">PV:OFF</span>
+    <span class="mode-pill pill--" id="p-pvarm">PV DESARMADO</span>
+    <span class="mode-pill pill-info" id="p-opmode">FULL</span>
+  </div>
+
+  <!-- ── Telemetría ── -->
+  <div class="status-bar">
+    <div class="stat-card"><div class="s-label">Bus DC</div><div class="s-value col-green"><span id="t-vbus">–</span><span class="s-unit">V</span></div></div>
+    <div class="stat-card"><div class="s-label">Bat 2S</div><div class="s-value col-amber"><span id="t-vbat">–</span><span class="s-unit">V</span></div>
+      <div class="soc-bar-wrap"><div class="soc-bar-fill" id="t-socbar" style="width:0%;background:var(--amber)"></div></div></div>
+    <div class="stat-card"><div class="s-label">Panel</div><div class="s-value col-blue"><span id="t-vpv">–</span><span class="s-unit">V</span></div></div>
+    <div class="stat-card"><div class="s-label">I bus (i_bb)</div><div class="s-value"><span id="t-ibb">–</span><span class="s-unit">A</span></div></div>
+    <div class="stat-card"><div class="s-label">I panel</div><div class="s-value col-blue"><span id="t-ipv">–</span><span class="s-unit">A</span></div></div>
+    <div class="stat-card"><div class="s-label">I bat</div><div class="s-value col-amber"><span id="t-ibat">–</span><span class="s-unit">A</span></div></div>
+    <div class="stat-card"><div class="s-label">P panel</div><div class="s-value col-purple"><span id="t-ppv">–</span><span class="s-unit">W</span></div></div>
+    <div class="stat-card"><div class="s-label">SoC</div><div class="s-value"><span id="t-soc">–</span><span class="s-unit">%</span></div></div>
+    <div class="stat-card"><div class="s-label">ton cmd</div><div class="s-value"><span id="t-ton">–</span><span class="s-unit">µs</span></div></div>
+    <div class="stat-card"><div class="s-label">PV duty</div><div class="s-value col-blue"><span id="t-pvduty">–</span></div></div>
+    <div class="stat-card"><div class="s-label">VPV ref</div><div class="s-value col-purple"><span id="t-vpvref">–</span><span class="s-unit">V</span></div></div>
+  </div>
+
+  <!-- ── Gráficos ── -->
+  <div class="charts-row">
+    <div class="chart-card"><div class="chart-label">Bus DC (V) · objetivo</div><canvas id="chart-bus"></canvas></div>
+    <div class="chart-card"><div class="chart-label">Potencia panel (W) · VPV (V)</div><canvas id="chart-pv"></canvas></div>
+  </div>
+
+  <!-- ── Operación ── -->
+  <div class="card">
+    <div class="cfg-title">Operación</div>
+    <div class="cfg-sub">Modo de sistema, control del buckboost y del subsistema PV. Reconocer faults.</div>
+    <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-bottom:6px;">Modo del sistema</div>
+    <div class="btn-row">
+      <button class="btn" data-op="0">FULL</button>
+      <button class="btn" data-op="1">SOLO BUCKBOOST</button>
+      <button class="btn" data-op="2">SOLO PV</button>
+    </div>
+    <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-bottom:6px;">Buckboost (bus)</div>
+    <div class="btn-row">
+      <button class="btn green" id="b-bb-on">ACTIVAR BUCKBOOST</button>
+      <button class="btn red"   id="b-bb-off">APAGAR BUCKBOOST</button>
+      <button class="btn amber" id="b-bb-ack">RECONOCER FAULT BB</button>
+    </div>
+    <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-bottom:6px;">PV / MPPT</div>
+    <div class="btn-row">
+      <button class="btn" data-pv="0">PV OFF</button>
+      <button class="btn" data-pv="1">SENSORS</button>
+      <button class="btn" data-pv="2">FIXED</button>
+      <button class="btn" data-pv="3">VPV PI</button>
+      <button class="btn" data-pv="4">MPPT</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn green"  id="b-pv-arm">ARMAR PV</button>
+      <button class="btn red"    id="b-pv-disarm">DESARMAR PV</button>
+      <button class="btn amber"  id="b-pv-ack">RECONOCER FAULT PV</button>
+    </div>
+    <div class="sep"></div>
+    <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);text-align:center;line-height:1.6">
+      Sin NVS · la configuración se guarda en Firebase y se aplica automáticamente
+    </div>
+  </div>
+
+  <div class="grid2">
+    <!-- ── Buckboost ── -->
+    <div class="card">
+      <div class="cfg-title">Buckboost — lazo de corriente (droop)</div>
+      <div class="cfg-sub">Mismo lazo que agentes 1/2. El maestro difunde i_ref_v; el agente 3 lo sigue y comparte el bus. Si el maestro cae, regula autónomo.</div>
+      <div class="param-list" id="g-bb"></div>
+      <div class="omega-note" id="bb-note">—</div>
+      <button class="btn green" id="apply-bb" style="width:100%;margin-top:12px;">APLICAR BUCKBOOST</button>
+    </div>
+    <!-- ── Protecciones ── -->
+    <div class="card">
+      <div class="cfg-title">Protecciones</div>
+      <div class="cfg-sub">Bus, batería 2S y mapeo de SoC (V de la batería 2S a 0% y 100%).</div>
+      <div class="param-list" id="g-prot"></div>
+      <button class="btn green" id="apply-prot" style="width:100%;margin-top:12px;">APLICAR PROTECCIONES</button>
+    </div>
+  </div>
+
+  <!-- ── PV / MPPT ── -->
+  <div class="card">
+    <div class="cfg-title">PV / MPPT</div>
+    <div class="cfg-sub">Boost del panel hacia la batería 2S. Control independiente del bus.</div>
+    <div class="grid2"><div class="param-list" id="g-pv-a"></div><div class="param-list" id="g-pv-b"></div></div>
+    <button class="btn green" id="apply-pv" style="width:100%;margin-top:14px;">APLICAR PV / MPPT</button>
+  </div>
+
+  <!-- ── Calibración ── -->
+  <div class="card">
+    <div class="cfg-title">Calibración de sensores</div>
+    <div class="cfg-sub">Voltajes: escribe el valor real medido con multímetro y pulsa CALIBRAR (ajusta el divisor). Corrientes: elige el rango del ACS712 (5A = 0.185 V/A · 20A = 0.100 V/A), pulsa CERO sin corriente (la batería queda calibrada a +idle, configurable abajo, porque alimenta los sensores) y ↔ SIGNO si el signo sale invertido.</div>
+
+    <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin:6px 0;">Voltajes</div>
+    <div class="cal-row"><span class="cal-lbl">Bus DC · real <b>V</b></span><input type="number" id="cal-bus5" step="0.01" placeholder="5.00"><button class="btn" data-cal="cal_bus5" data-src="cal-bus5">CALIBRAR</button></div>
+    <div class="cal-row"><span class="cal-lbl">Batería 2S · real <b>V</b></span><input type="number" id="cal-bat2s" step="0.01" placeholder="8.20"><button class="btn" data-cal="cal_bat2s" data-src="cal-bat2s">CALIBRAR</button></div>
+    <div class="cal-row"><span class="cal-lbl">Panel · real <b>V</b></span><input type="number" id="cal-panel" step="0.01" placeholder="0.00"><button class="btn" data-cal="cal_panel" data-src="cal-panel">CALIBRAR</button></div>
+    <div class="cal-row"><span class="cal-lbl">Punto medio 2S (A2) · real <b>V</b></span><input type="number" id="cal-spare" step="0.01" placeholder="4.00"><button class="btn" data-cal="cal_spare" data-src="cal-spare">CALIBRAR</button></div>
+
+    <div class="sep"></div>
+    <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin:6px 0;">Corrientes (ACS712) — rango 5A / 20A</div>
+    <div class="cal-row"><span class="cal-lbl">I bus (buckboost)</span>
+      <button class="btn amber" data-zero="izero_ibus">CERO</button>
+      <select class="cal-sel" data-mode="imode_ibus"><option value="0">5 A · 0.185 V/A</option><option value="1">20 A · 0.100 V/A</option></select>
+      <button class="btn" data-sign="ibus" data-modesrc="imode_ibus">↔ SIGNO</button></div>
+    <div class="cal-row"><span class="cal-lbl">I panel</span>
+      <button class="btn amber" data-zero="izero_ipanel">CERO</button>
+      <select class="cal-sel" data-mode="imode_ipanel"><option value="0">5 A · 0.185 V/A</option><option value="1">20 A · 0.100 V/A</option></select>
+      <button class="btn" data-sign="ipanel" data-modesrc="imode_ipanel">↔ SIGNO</button></div>
+    <div class="cal-row"><span class="cal-lbl">I batería · cero = +idle</span>
+      <button class="btn amber" data-zero="izero_ibat">CERO</button>
+      <select class="cal-sel" data-mode="imode_ibat"><option value="0">5 A · 0.185 V/A</option><option value="1">20 A · 0.100 V/A</option></select>
+      <button class="btn" data-sign="ibat" data-modesrc="imode_ibat">↔ SIGNO</button></div>
+    <div class="cal-row"><span class="cal-lbl">I batería idle · bias del cero (A)</span><input type="number" id="ibat-idle" step="0.005" placeholder="0.050"><button class="btn" data-val="ibat_idle" data-src="ibat-idle">FIJAR</button></div>
+
+    <div class="sep"></div>
+    <div class="cal-row"><span class="cal-lbl">Eficiencia KCL nodo 2S (η)</span><input type="number" id="kcl-eta" step="0.01" placeholder="0.90"><button class="btn" data-val="kcl_eta" data-src="kcl-eta">FIJAR</button></div>
+  </div>
+
+  <div class="log-panel">
+    <h3>Registro</h3>
+    <div id="log-box"></div>
+  </div>
+
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey:"AIzaSyDwXigQYn1N0nreSYCJ8h0ta63i1mjIWK8",
+  authDomain:"microred-dc.firebaseapp.com",
+  databaseURL:"https://microred-dc-default-rtdb.firebaseio.com",
+  projectId:"microred-dc",
+  storageBucket:"microred-dc.firebasestorage.app",
+  messagingSenderId:"929937213017",
+  appId:"1:929937213017:web:73d86c234238f151195348"
+};
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+const auth = getAuth(app);
+try { await signInAnonymously(auth); } catch(e){ console.error("[Auth]", e); }
+
+const $ = id => document.getElementById(id);
+const setTxt = (id,v)=>{ const e=$(id); if(e) e.textContent=(v??'–'); };
+const fmt = (v,d=3)=>{ const n=parseFloat(v); return isNaN(n)?'–':n.toFixed(d); };
+function setPill(id,mode){ const e=$(id); if(!e)return; e.textContent=mode; e.className='mode-pill pill-'+mode; }
+function addLog(msg,cls=''){ const b=$('log-box'); const p=document.createElement('p'); if(cls)p.className=cls;
+  p.textContent=new Date().toLocaleTimeString('es-CL')+'  '+msg; b.appendChild(p);
+  while(b.children.length>120) b.removeChild(b.firstChild); b.scrollTop=b.scrollHeight; }
+
+const paramsRef = ref(db,"agente3/params");
+async function writeParams(fields){
+  try { await update(paramsRef, fields); addLog("✓ ← "+JSON.stringify(fields),"ok"); }
+  catch(e){ addLog("✗ error: "+e.message,"fault"); }
+}
+
+/* ── Hardware fijo para la nota de ganancias ── */
+const L_H=2.8e-3, C_F=2200e-6;
+
+/* ── Definición de grupos de parámetros ── */
+const G_BB = [
+  {key:'target_v',  label:'target_v (V)',   step:0.1, def:5.0},
+  {key:'omega_v',   label:'ω_n,v (rad/s)',  step:5,   def:10,  max:160},
+  {key:'zeta_v',    label:'ζ_v',            step:0.05,def:0.707},
+  {key:'omega_i',   label:'ω_n,i (rad/s)',  step:10,  def:100, max:1600},
+  {key:'zeta_i',    label:'ζ_i',            step:0.05,def:0.707},
+  {key:'plant_vdc', label:'Vdc conmuta (V)',step:0.1, def:8.4},
+  {key:'kd_droop',  label:'kd droop (A)',   step:0.1, def:0.1},
+  {key:'i_ref_max', label:'i_ref_max (A)',  step:0.1, def:1.0},
+  {key:'i_ref_min', label:'i_ref_min (A)',  step:0.1, def:-1.0},
+  {key:'pwm_period',label:'PWM período (µs)',step:1,  def:50},
+  {key:'ton_max',   label:'ton_max (µs)',   step:1,   def:42.5},
+  {key:'min_off',   label:'min_off (µs)',   step:0.5, def:8},
+  {key:'softstart_s',label:'soft-start (s)',step:0.1, def:1.0},
+];
+const G_PROT = [
+  {key:'ov_trip',     label:'OV bus (V)',     step:0.1, def:5.6},
+  {key:'uv_trip',     label:'UV bus (V)',     step:0.1, def:0.0},
+  {key:'oc_trip',     label:'OC i_bb (A)',    step:0.1, def:1.5},
+  {key:'bat_ov_trip', label:'Bat 2S OV (V)',  step:0.1, def:8.7},
+  {key:'bat_uv_trip', label:'Bat 2S UV (V)',  step:0.1, def:6.0},
+  {key:'soc_empty_v', label:'SoC 0% (V)',     step:0.1, def:6.0},
+  {key:'soc_full_v',  label:'SoC 100% (V)',   step:0.1, def:8.4},
+  {key:'bus_chk_en',  label:'Seguridad bus (0/1)', step:1,   def:1},
+  {key:'bus_chk_tol', label:'Bus tol (V)',    step:0.05, def:0.3},
+];
+const G_PV_A = [
+  {key:'pv_fixed_duty',   label:'duty fijo',      step:0.01, def:0.05},
+  {key:'pv_vpv_ref',      label:'VPV ref (V)',    step:0.05, def:4.6},
+  {key:'pv_vpv_ref_min',  label:'VPV ref min (V)',step:0.05, def:3.4},
+  {key:'pv_vpv_ref_max',  label:'VPV ref max (V)',step:0.05, def:5.6},
+  {key:'pv_kp',           label:'PV Kp',          step:0.005,def:0.06},
+  {key:'pv_ki',           label:'PV Ki',          step:0.05, def:0.9},
+  {key:'pv_duty_min',     label:'duty min',       step:0.01, def:0.0},
+  {key:'pv_duty_start',   label:'duty start',     step:0.01, def:0.03},
+  {key:'pv_duty_max',     label:'duty max',       step:0.01, def:0.60},
+  {key:'pv_duty_slew',    label:'duty slew/paso', step:0.001,def:0.0015},
+];
+const G_PV_B = [
+  {key:'pv_softstart_ms', label:'soft-start (ms)', step:100, def:8000},
+  {key:'pv_ctrl_ms',      label:'período ctrl (ms)',step:5,  def:50},
+  {key:'pv_panel_trip_low',label:'VPV min trip (V)',step:0.1,def:2.7},
+  {key:'pv_bat_warn_high',label:'Bat warn (V)',    step:0.1, def:8.10},
+  {key:'pv_bat_trip_high',label:'Bat trip (V)',    step:0.1, def:8.20},
+  {key:'pv_iin_max',      label:'I panel max (A)',  step:0.1, def:2.6},
+  {key:'pv_ibat_max',     label:'I bat carga max (A)',step:0.1,def:1.8},
+  {key:'pv_ibat_lim',     label:'I bat carga LÍMITE (A)',step:0.05,def:0.7},
+  {key:'pv_pin_max',      label:'P panel max (W)',  step:1,   def:14},
+  {key:'pv_irev_max',     label:'I reversa max (A)',step:0.1, def:0.3},
+  {key:'mppt_step_v',     label:'MPPT paso (V)',    step:0.005,def:0.04},
+  {key:'mppt_eps_power',  label:'MPPT εP (W)',      step:0.01,def:0.015},
+  {key:'mppt_min_power',  label:'MPPT P min (W)',   step:0.5, def:0.3},
+  {key:'mppt_period_ms',  label:'MPPT período (ms)',step:100, def:1000},
+  {key:'mppt_reacq_ms',   label:'MPPT re-adq (ms)', step:500, def:5000},
+];
+
+function buildRows(contId, group){
+  const c=$(contId);
+  group.forEach(p=>{
+    const row=document.createElement('div'); row.className='param-row';
+    row.innerHTML='<label>'+p.label+(p.max?' <small style="color:var(--amber)">máx '+p.max+' (Nyquist)</small>':'')+'</label>'+
+      '<input type="number" id="p-'+p.key+'" step="'+p.step+'"'+(p.max?' max="'+p.max+'"':'')+' value="'+p.def+'">'+
+      '<span class="current-val" id="cv-'+p.key+'">–</span>';
+    c.appendChild(row);
+  });
+}
+buildRows('g-bb', G_BB);
+buildRows('g-prot', G_PROT);
+buildRows('g-pv-a', G_PV_A);
+buildRows('g-pv-b', G_PV_B);
+
+function bbNote(){
+  const wnv=parseFloat($('p-omega_v').value), wni=parseFloat($('p-omega_i').value);
+  const zv=parseFloat($('p-zeta_v').value), zi=parseFloat($('p-zeta_i').value);
+  const vdc=parseFloat($('p-plant_vdc').value);
+  let t='';
+  if(wnv>0 && zv>0){ const kpV=2*zv*wnv*C_F, kiV=wnv*wnv*C_F; t+='Kp_v='+kpV.toFixed(4)+' Ki_v='+kiV.toFixed(3); }
+  if(wni>0 && zi>0 && vdc>=0.5){ const kpI=2*zi*wni*L_H/vdc, kiI=wni*wni*L_H/vdc; t+='  |  Kp_i='+kpI.toFixed(4)+' Ki_i='+kiI.toFixed(2); }
+  setTxt('bb-note', t||'—');
+}
+['omega_v','zeta_v','omega_i','zeta_i','plant_vdc'].forEach(k=>$('p-'+k).addEventListener('input', bbNote));
+bbNote();
+
+function applyGroup(group){
+  const f={};
+  for(const p of group){ const v=parseFloat($('p-'+p.key).value);
+    if(isNaN(v)){ addLog('Valor inválido en '+p.label,'fault'); return; }
+    if(p.max && v>p.max){ addLog('✗ '+p.label+' = '+v+' supera el máx Nyquist ('+p.max+' rad/s). Ajústalo.','fault'); return; }
+    f[p.key]=v; }
+  writeParams(f);
+}
+$('apply-bb').onclick   = ()=>applyGroup(G_BB);
+$('apply-prot').onclick = ()=>applyGroup(G_PROT);
+$('apply-pv').onclick   = ()=>applyGroup(G_PV_A.concat(G_PV_B));
+
+/* ── Botones de operación ── */
+document.querySelectorAll('[data-op]').forEach(b=>b.onclick=()=>writeParams({op_mode:parseInt(b.dataset.op)}));
+document.querySelectorAll('[data-pv]').forEach(b=>b.onclick=()=>writeParams({pv_mode:parseInt(b.dataset.pv)}));
+$('b-bb-on').onclick    = ()=>writeParams({run_mode:1});
+$('b-bb-off').onclick   = ()=>writeParams({run_mode:0});
+$('b-bb-ack').onclick   = ()=>writeParams({fault_ack:true});
+$('b-pv-arm').onclick   = ()=>writeParams({pv_arm:1});
+$('b-pv-disarm').onclick= ()=>writeParams({pv_arm:0});
+$('b-pv-ack').onclick   = ()=>writeParams({pv_fault_ack:true});
+
+/* ── Calibración ── */
+document.querySelectorAll('[data-cal]').forEach(b=>b.onclick=()=>{
+  const v=parseFloat($(b.dataset.src).value);
+  if(isNaN(v)||v<=0){ addLog('Voltaje real inválido','fault'); return; }
+  writeParams({[b.dataset.cal]:v});
+});
+document.querySelectorAll('[data-zero]').forEach(b=>b.onclick=()=>writeParams({[b.dataset.zero]:1}));
+
+/* Rango del ACS712 (5A/20A): el selector fija imode_* (0=5A, 1=20A). La
+   sensibilidad la determina el agente según el rango. */
+const modeSel = {};   // imode_ibus → elemento <select>
+const sensForMode = m => (parseInt(m)===1 ? 0.100 : 0.185);
+document.querySelectorAll('[data-mode]').forEach(s=>{
+  modeSel[s.dataset.mode]=s;
+  s.onchange=()=>writeParams({[s.dataset.mode]:parseInt(s.value)});
+});
+
+/* ↔ SIGNO: invierte el signo enviando isens_* con la sensibilidad del rango
+   seleccionado y signo alternado (negativo ⇒ signo − en el agente). */
+const signState = { ibus:1, ipanel:-1, ibat:1 };   // signos por defecto del firmware
+document.querySelectorAll('[data-sign]').forEach(b=>b.onclick=()=>{
+  const name=b.dataset.sign;
+  signState[name] = -signState[name];
+  const mode = modeSel[b.dataset.modesrc] ? modeSel[b.dataset.modesrc].value : 0;
+  writeParams({['isens_'+name]: signState[name]*sensForMode(mode)});
+});
+document.querySelectorAll('[data-val]').forEach(b=>b.onclick=()=>{
+  const v=parseFloat($(b.dataset.src).value);
+  if(isNaN(v)){ addLog('Valor inválido','fault'); return; }
+  writeParams({[b.dataset.val]:v});
+});
+
+/* ── Mapeo de faults ── */
+const BB_FAULT={1:'Bus sobre-voltaje',2:'Bus sub-voltaje',3:'Sobre-corriente i_bb',4:'Sensor ADS1 desconectado',5:'Batería 2S alta',6:'Batería 2S baja'};
+const PV_FAULT={4:'Sensor ADS2 (PV)',7:'Protección PV',
+  0x11:'Batería 2S alta',0x12:'VPV colapsado (panel)',0x13:'Corriente panel alta',
+  0x14:'Corriente carga batería alta',0x15:'Corriente panel reversa/signo',0x16:'Potencia panel alta'};
+const PVMODE=['OFF','SENSORS','FIXED','VPV_PI','MPPT'];
+const OPMODE=['FULL','BUCKBOOST','PV_ONLY'];
+
+/* ── Gráficos ── */
+const MAXPTS=60;
+function mkChart(ctx, series){
+  return new Chart(ctx,{type:'line',data:{labels:[],datasets:series},
+    options:{animation:false,responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8fa3bd',font:{size:9}}}},
+      scales:{x:{display:false},y:{ticks:{color:'#8fa3bd',font:{size:9}},grid:{color:'rgba(255,255,255,0.04)'}}}}});
+}
+const chartBus = mkChart($('chart-bus').getContext('2d'),[
+  {label:'v_bus',data:[],borderColor:'#16b399',backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:.3},
+  {label:'objetivo',data:[],borderColor:'#8fa3bd',borderDash:[4,4],backgroundColor:'transparent',borderWidth:1,pointRadius:0}]);
+const chartPv = mkChart($('chart-pv').getContext('2d'),[
+  {label:'P panel',data:[],borderColor:'#7b6fff',backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:.3,yAxisID:'y'},
+  {label:'VPV',data:[],borderColor:'#3d8ce0',backgroundColor:'transparent',borderWidth:1,pointRadius:0,tension:.3,yAxisID:'y'}]);
+function pushChart(ch, vals){
+  ch.data.labels.push(''); vals.forEach((v,i)=>ch.data.datasets[i].data.push(v));
+  if(ch.data.labels.length>MAXPTS){ ch.data.labels.shift(); ch.data.datasets.forEach(d=>d.data.shift()); }
+  ch.update('none');
+}
+
+/* ── Suscripción a telemetría ── */
+let lastTargetV = 5.0;
+onValue(paramsRef, snap=>{
+  const d=snap.val()||{};
+  if(d.target_v!=null) lastTargetV=parseFloat(d.target_v);
+  // reflejar valores actuales junto a cada input
+  [...G_BB,...G_PROT,...G_PV_A,...G_PV_B].forEach(p=>{ if(d[p.key]!=null) setTxt('cv-'+p.key, d[p.key]); });
+});
+
+onValue(ref(db,"agentes/agente3"), snap=>{
+  const d=snap.val();
+  const online = !!(d && d.online);
+  $('a3-dot').className='conn-dot '+(online?'conn-on':'conn-off');
+  setTxt('a3-conn', online?'online':'offline');
+  if(!d){ return; }
+  setTxt('a3-ts', d.ts? ('actualizado '+new Date(d.ts*1000).toLocaleTimeString('es-CL')) : '—');
+
+  // telemetría
+  setTxt('t-vbus', fmt(d.v_bus,2));
+  setTxt('t-vbat', fmt(d.v_bat,2));
+  setTxt('t-vpv',  fmt(d.v_panel,2));
+  setTxt('t-ibb',  fmt(d.i_out,3));
+  setTxt('t-ipv',  fmt(d.i_panel,3));
+  setTxt('t-ibat', fmt(d.i_bat,3));
+  setTxt('t-ppv',  fmt(d.p_panel,2));
+  const socPct = d.soc!=null ? (parseFloat(d.soc)*100) : NaN;
+  setTxt('t-soc', isNaN(socPct)?'–':socPct.toFixed(0));
+  if(!isNaN(socPct)){ const f=$('t-socbar'); f.style.width=Math.max(0,Math.min(100,socPct))+'%';
+    f.style.background = socPct<25?'var(--red)':socPct<60?'var(--amber)':'var(--green)'; }
+  setTxt('t-ton',  fmt(d.ton_cmd,1));
+  setTxt('t-pvduty', fmt(d.pv_duty,3));
+  setTxt('t-vpvref', fmt(d.pv_vpv_ref,2));
+
+  // pills
+  setPill('p-run', online ? (d.run_mode||'OFF') : 'OFF');
+  setPill('p-topo', online ? (d.topology||'–') : '–');
+  const pm = parseInt(d.pv_mode)||0;
+  setTxt('p-pvmode', 'PV:'+(PVMODE[pm]||'OFF'));
+  $('p-pvarm').textContent = (d.pv_armed && online) ? 'PV ARMADO' : 'PV DESARMADO';
+  $('p-pvarm').className = 'mode-pill ' + ((d.pv_armed && online)?'pill-ON':'pill--');
+  setTxt('p-opmode', OPMODE[parseInt(d.op_mode)||0] || 'FULL');
+
+  // alertas de fault
+  const bbCode=parseInt(d.fault_code)||0;
+  const bbFault=(d.fault===true || d.fault==='true') && bbCode>0;
+  $('bb-fault').style.display = bbFault?'flex':'none';
+  if(bbFault) setTxt('bb-fault-msg','BUCKBOOST · '+(BB_FAULT[bbCode]||('código '+bbCode)));
+  const pvCode=parseInt(d.pv_fault_code)||0;
+  const pvFault=(d.pv_fault===true || d.pv_fault==='true') && pvCode>0;
+  $('pv-fault').style.display = pvFault?'flex':'none';
+  if(pvFault) setTxt('pv-fault-msg','PV · '+(PV_FAULT[pvCode]||('código '+pvCode)));
+
+  // alerta de sensor (código 4 en cualquiera)
+  const sensorIssue = (bbCode===4)||(pvCode===4);
+  $('sensor-banner').style.display = sensorIssue?'flex':'none';
+  if(sensorIssue) setTxt('sensor-msg','Sensor ADS desconectado — control inhibido.');
+
+  // gráficos
+  if(online){
+    pushChart(chartBus,[parseFloat(d.v_bus), lastTargetV]);
+    pushChart(chartPv,[parseFloat(d.p_panel), parseFloat(d.v_panel)]);
+  }
+});
+
+addLog('Interfaz lista. Esperando telemetría del agente 3…');
+</script>
+</body>
+</html>

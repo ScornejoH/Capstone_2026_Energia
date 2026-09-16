@@ -1,0 +1,39 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "agente1": {
+      "params":     { ".read": "auth != null", ".write": "auth != null" },
+      "telemetria": { ".read": "auth != null", ".write": "auth.token.firebase.sign_in_provider === 'password'" }
+    },
+
+    "agente2": {
+      "params": { ".read": "auth != null", ".write": "auth != null" }
+    },
+
+    "agente3": {
+      "params": { ".read": "auth != null", ".write": "auth != null" }
+    },
+
+    "conversor": {
+      "params":     { ".read": "auth != null", ".write": "auth != null" },
+      "telemetria": { ".read": "auth != null", ".write": "auth.token.firebase.sign_in_provider === 'password'" }
+    },
+
+    "agentes": {
+      ".read":  "auth != null",
+      ".write": "auth.token.firebase.sign_in_provider === 'password'"
+    },
+
+    "history": {
+      ".read":  "auth != null",
+      ".write": "auth.token.firebase.sign_in_provider === 'password'"
+    },
+
+    "loghf": {
+      ".read":  "auth != null",
+      ".write": "auth.token.firebase.sign_in_provider === 'password'"
+    }
+  }
+}

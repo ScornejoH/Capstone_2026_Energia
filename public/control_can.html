@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control Multi-Agente CAN</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<style>
+:root {
+  --bg:#0e1621; --bg2:#16202e; --bg3:#1c2a3a;
+  --border:rgba(143,163,189,0.14);
+  --text:#eef4fb; --muted:#8fa3bd;
+  --green:#16b399; --red:#e2504a; --amber:#f0a92b; --blue:#3d8ce0; --purple:#7b6fff;
+  --font-mono:'Space Mono',monospace;
+  --font-ui:'Syne',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font-ui);background:var(--bg);color:var(--text);min-height:100vh;}
+.shell{max-width:1240px;margin:0 auto;padding:24px 20px 48px;}
+
+header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.logo{display:flex;align-items:center;gap:14px;}
+.logo-mark{width:34px;height:34px;border:2px solid var(--purple);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+h1{font-size:18px;font-weight:800;letter-spacing:.04em;}
+h1 span{color:var(--muted);font-weight:400;}
+.nav-link{font-family:var(--font-mono);font-size:11px;color:var(--muted);text-decoration:none;padding:6px 12px;border:1px solid var(--border);border-radius:6px;transition:border-color .2s,color .2s;}
+.nav-link:hover{border-color:var(--green);color:var(--green);}
+.fb-badge{font-family:var(--font-mono);font-size:10px;padding:4px 10px;border-radius:6px;background:rgba(255,167,38,.08);border:1px solid rgba(255,167,38,.25);color:#ffa726;letter-spacing:.06em;}
+
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;}
+@media(max-width:820px){.charts-row{grid-template-columns:1fr;}}
+.chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;}
+.chart-card canvas{height:180px!important;}
+.chart-label{font-family:var(--font-mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+.vbus-disc{font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-bottom:8px;}
+.vbus-disc.warn{color:var(--amber);}
+
+.agents-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+@media(max-width:820px){.agents-grid{grid-template-columns:1fr;}}
+
+.agent-col{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:20px;}
+.agent-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+.agent-title{font-size:15px;font-weight:800;letter-spacing:.03em;}
+.agent-title small{display:block;font-family:var(--font-mono);font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.1em;margin-top:3px;}
+
+.conn-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;}
+.conn-on {background:var(--green);animation:pulse 1.5s ease-in-out infinite;}
+.conn-off{background:var(--red);}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+.conn-label{font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;}
+
+.fault-banner{display:none;background:rgba(226,80,74,.1);border:1px solid rgba(226,80,74,.35);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-family:var(--font-mono);font-size:11px;color:var(--red);align-items:center;gap:10px;}
+.sensor-banner{display:none;background:rgba(240,169,43,.10);border:1px solid rgba(240,169,43,.35);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-family:var(--font-mono);font-size:11px;color:var(--amber);align-items:center;gap:10px;}
+
+.status-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin-bottom:16px;}
+.stat-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;}
+.stat-card .s-label{font-size:8px;letter-spacing:.16em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
+.stat-card .s-value{font-family:var(--font-mono);font-size:18px;font-weight:700;line-height:1;}
+.stat-card .s-unit{font-size:10px;color:var(--muted);margin-left:2px;}
+.col-green{color:var(--green);}.col-amber{color:var(--amber);}.col-blue{color:var(--blue);}.col-purple{color:var(--purple);}
+
+.soc-bar-wrap{margin-top:6px;height:4px;background:var(--bg2);border-radius:2px;overflow:hidden;}
+.soc-bar-fill{height:100%;border-radius:2px;transition:width .5s,background .5s;}
+
+.pills-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+.mode-pill{display:inline-block;font-family:var(--font-mono);font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:.08em;text-transform:uppercase;}
+.pill-ON   {background:rgba(22,179,153,.12);color:var(--green); border:1px solid rgba(22,179,153,.25);}
+.pill-OFF  {background:rgba(90,95,107,.12);color:var(--muted); border:1px solid rgba(90,95,107,.25);}
+.pill-BOOST{background:rgba(22,179,153,.12);color:var(--green); border:1px solid rgba(22,179,153,.25);}
+.pill-BUCK {background:rgba(226,80,74,.12); color:var(--red);   border:1px solid rgba(226,80,74,.25);}
+.pill--    {background:rgba(90,95,107,.12);color:var(--muted); border:1px solid rgba(90,95,107,.25);}
+
+.btn-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
+.btn{font-family:var(--font-mono);font-size:11px;font-weight:700;padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;letter-spacing:.05em;transition:all .15s;}
+.btn:hover{border-color:var(--blue);color:var(--blue);}
+.btn:active{transform:scale(.97);}
+.btn.green{background:rgba(22,179,153,.08);border-color:rgba(22,179,153,.35);color:var(--green);}
+.btn.green:hover{background:rgba(22,179,153,.18);}
+.btn.red{background:rgba(226,80,74,.08);border-color:rgba(226,80,74,.35);color:var(--red);}
+.btn.red:hover{background:rgba(226,80,74,.18);}
+.btn.amber{background:rgba(240,169,43,.08);border-color:rgba(240,169,43,.35);color:var(--amber);}
+.btn.amber:hover{background:rgba(240,169,43,.18);}
+.btn.purple{background:rgba(181,123,245,.08);border-color:rgba(181,123,245,.35);color:var(--purple);}
+.btn.purple:hover{background:rgba(181,123,245,.18);}
+.btn.full{width:100%;}
+
+.cfg-title{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;font-family:var(--font-mono);}
+.cfg-sub{font-family:var(--font-mono);font-size:9px;color:var(--muted);margin-bottom:12px;line-height:1.7;}
+.param-list{display:flex;flex-direction:column;gap:9px;}
+.param-row{display:grid;grid-template-columns:1fr 100px 70px;align-items:center;gap:8px;}
+.param-row label{font-size:11px;color:var(--muted);font-family:var(--font-mono);}
+.param-row input[type=number]{background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;font-family:var(--font-mono);font-size:12px;width:100%;transition:border-color .15s;}
+.param-row input[type=number]:focus{outline:none;border-color:var(--blue);}
+.current-val{font-family:var(--font-mono);font-size:11px;color:var(--amber);text-align:right;}
+.omega-note{font-family:var(--font-mono);font-size:9px;color:var(--purple);margin-top:8px;padding:6px 10px;background:rgba(181,123,245,.06);border-radius:6px;border-left:2px solid rgba(181,123,245,.3);}
+
+.sep{height:1px;background:var(--border);margin:16px 0;}
+.cal-grid{display:flex;flex-direction:column;gap:8px;}
+.cal-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
+.cal-lbl{flex:1;min-width:150px;font-family:var(--font-mono);font-size:10px;color:var(--muted);}
+.cal-lbl b{color:var(--text);}
+.cal-row input[type=number]{width:80px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-family:var(--font-mono);font-size:11px;}
+.cal-row .btn{padding:6px 10px;font-size:10px;}
+
+.log-panel{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:18px;}
+.log-panel h3{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-family:var(--font-mono);}
+#log-box{font-family:var(--font-mono);font-size:11px;color:var(--muted);height:150px;overflow-y:auto;background:var(--bg3);border-radius:8px;padding:10px 12px;line-height:1.8;}
+#log-box p{margin:0;}
+#log-box p.fault{color:var(--red);}
+#log-box p.ok{color:var(--green);}
+#log-box p.cmd{color:var(--blue);}
+.last-update{font-family:var(--font-mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:14px 0 18px;}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <div class="logo">
+      <div class="logo-mark">⚯</div>
+      <h1>MICRORRED DC <span>· Control Multi-Agente (CAN)</span></h1>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <span class="fb-badge">⬤ AUTH ANÓNIMA</span>
+      <a class="nav-link" href="Configuracion_Agente_3.html">Agente 3 ☀</a>
+      <a class="nav-link" href="index.html">← Dashboard</a>
+    </div>
+  </header>
+
+  <div class="last-update">Telemetría en tiempo real · <span id="last-update">esperando datos...</span></div>
+
+  <!-- ════════════ GRÁFICOS ════════════ -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-label">Voltaje del bus DC (compartido)</div>
+      <div id="vbus-disc" class="vbus-disc">Lecturas crudas: —</div>
+      <div id="vbus-cons" class="vbus-disc" style="margin-top:4px;">Consenso: —</div>
+      <canvas id="chart-bus"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-label">Corrientes de salida — agente 1 vs agente 2</div>
+      <canvas id="chart-curr"></canvas>
+    </div>
+  </div>
+
+  <div class="agents-grid">
+
+    <!-- ════════════ AGENTE 1 ════════════ -->
+    <div class="agent-col">
+      <div class="agent-head">
+        <div class="agent-title">Agente 1 <small>GATEWAY WiFi · /agente1</small></div>
+        <div><span class="conn-dot conn-off" id="a1-dot"></span><span class="conn-label" id="a1-conn">offline</span></div>
+      </div>
+
+      <div class="sensor-banner" id="a1-sensor-banner"><span>⚠</span><span>Sensor ADS1115 desconectado — control inhibido</span></div>
+      <div class="fault-banner"  id="a1-fault-banner"><span id="a1-fault-msg">⚠ FAULT ACTIVO</span></div>
+
+      <div class="status-bar">
+        <div class="stat-card"><div class="s-label">V Bus</div><div class="s-value col-green"  id="a1-vbus">–<span class="s-unit">V</span></div></div>
+        <div class="stat-card"><div class="s-label">V Bat</div><div class="s-value col-blue"   id="a1-vbat">–<span class="s-unit">V</span></div></div>
+        <div class="stat-card"><div class="s-label">I Out</div><div class="s-value col-amber"  id="a1-iout">–<span class="s-unit">A</span></div></div>
+        <div class="stat-card"><div class="s-label">P Out</div><div class="s-value col-green"  id="a1-pout">–<span class="s-unit">W</span></div></div>
+        <div class="stat-card"><div class="s-label">I Ref</div><div class="s-value col-purple" id="a1-iref">–<span class="s-unit">A</span></div></div>
+        <div class="stat-card">
+          <div class="s-label">SoC</div><div class="s-value" id="a1-soc">–<span class="s-unit">%</span></div>
+          <div class="soc-bar-wrap"><div class="soc-bar-fill" id="a1-soc-bar" style="width:0%"></div></div>
+        </div>
+        <div class="stat-card"><div class="s-label">Duty</div><div class="s-value" id="a1-duty">–<span class="s-unit">%</span></div></div>
+      </div>
+
+      <div class="pills-row">
+        <span class="mode-pill pill--" id="a1-pill-run">OFF</span>
+        <span class="mode-pill pill--" id="a1-pill-topo">–</span>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn green" id="a1-on">Encender</button>
+        <button class="btn red"   id="a1-off">Apagar</button>
+        <button class="btn amber" id="a1-clear">Limpiar Fault</button>
+      </div>
+
+      <div class="cfg-title">Configuración — escribe /agente1/params</div>
+      <div class="cfg-sub">El agente 1 lee estos valores directamente desde Firebase.</div>
+      <div class="param-list" id="a1-params"></div>
+      <div class="omega-note" id="a1-note">Kp/Ki se calculan en la ESP32 desde wc.</div>
+      <div style="margin-top:12px"><button class="btn full purple" id="a1-apply">Aplicar config Agente 1</button></div>
+
+      <div class="sep"></div>
+      <div class="cfg-title">Calibración de sensores</div>
+      <div class="cal-grid">
+        <div class="cal-row">
+          <span class="cal-lbl">Bus: raw <b id="a1-raw-bus">–</b> V · k <b id="a1-div-bus">–</b> → <b id="a1-cvb">–</b> V</span>
+          <input type="number" id="a1-cal-bus-in" step="0.1" placeholder="V real">
+          <button class="btn" id="a1-cal-bus">Calibrar</button>
+        </div>
+        <div class="cal-row">
+          <span class="cal-lbl">Bat: raw <b id="a1-raw-bat">–</b> V · k <b id="a1-div-bat">–</b> → <b id="a1-cvbat">–</b> V</span>
+          <input type="number" id="a1-cal-bat-in" step="0.1" placeholder="V real">
+          <button class="btn" id="a1-cal-bat">Calibrar</button>
+        </div>
+        <div class="cal-row">
+          <span class="cal-lbl">ACS: raw <b id="a1-raw-acs">–</b> V · off <b id="a1-acs-off">–</b> · i <b id="a1-cvi">–</b> A</span>
+          <button class="btn" id="a1-acs-zero">⊙ Cero (0 A)</button>
+        </div>
+        <div class="cal-row">
+          <span class="cal-lbl">Modelo <b id="a1-acs-model">–</b> · signo <b id="a1-acs-sign">–</b></span>
+          <button class="btn" id="a1-acs-model-btn">Modelo 5A/20A</button>
+          <button class="btn" id="a1-acs-sign-btn">Invertir signo</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════ AGENTE 2 ════════════ -->
+    <div class="agent-col">
+      <div class="agent-head">
+        <div class="agent-title">Agente 2 <small>NODO CAN · /agente2 (vía agente 1)</small></div>
+        <div><span class="conn-dot conn-off" id="a2-dot"></span><span class="conn-label" id="a2-conn">offline</span></div>
+      </div>
+
+      <div class="sensor-banner" id="a2-sensor-banner"><span>⚠</span><span>Sensor ADS1115 desconectado — control inhibido</span></div>
+      <div class="fault-banner"  id="a2-fault-banner"><span id="a2-fault-msg">⚠ FAULT ACTIVO</span></div>
+
+      <div class="status-bar">
+        <div class="stat-card"><div class="s-label">V Bus</div><div class="s-value col-green" id="a2-vbus">–<span class="s-unit">V</span></div></div>
+        <div class="stat-card"><div class="s-label">V Bat</div><div class="s-value col-blue"  id="a2-vbat">–<span class="s-unit">V</span></div></div>
+        <div class="stat-card"><div class="s-label">I Out</div><div class="s-value col-amber" id="a2-iout">–<span class="s-unit">A</span></div></div>
+        <div class="stat-card"><div class="s-label">P Out</div><div class="s-value col-green" id="a2-pout">–<span class="s-unit">W</span></div></div>
+        <div class="stat-card">
+          <div class="s-label">SoC</div><div class="s-value" id="a2-soc">–<span class="s-unit">%</span></div>
+          <div class="soc-bar-wrap"><div class="soc-bar-fill" id="a2-soc-bar" style="width:0%"></div></div>
+        </div>
+      </div>
+
+      <div class="pills-row">
+        <span class="mode-pill pill--" id="a2-pill-run">OFF</span>
+        <span class="mode-pill pill--" id="a2-pill-topo">–</span>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn green" id="a2-on">Encender</button>
+        <button class="btn red"   id="a2-off">Apagar</button>
+        <button class="btn amber" id="a2-clear">Limpiar Fault</button>
+      </div>
+
+      <div class="cfg-title">Configuración — escribe /agente2/params</div>
+      <div class="cfg-sub">El agente 1 retransmite estos valores al agente 2 por CAN.</div>
+      <div class="param-list" id="a2-params"></div>
+      <div class="omega-note" id="a2-note">Kp/Ki se calculan en la ESP32 desde wc.</div>
+      <div style="margin-top:12px"><button class="btn full purple" id="a2-apply">Aplicar config Agente 2</button></div>
+
+      <div class="sep"></div>
+      <div class="cfg-title">Calibración de sensores (auto por CAN)</div>
+      <div class="cfg-sub">El agente 2 calcula sus propios factores desde estos comandos.<br>
+        Ingresa el voltaje real medido y verifica con la lectura mostrada.</div>
+      <div class="cal-grid">
+        <div class="cal-row">
+          <span class="cal-lbl">Bus → mide <b id="a2-cvb">–</b> V</span>
+          <input type="number" id="a2-cal-bus-in" step="0.1" placeholder="V real">
+          <button class="btn" id="a2-cal-bus">Calibrar</button>
+        </div>
+        <div class="cal-row">
+          <span class="cal-lbl">Bat → mide <b id="a2-cvbat">–</b> V</span>
+          <input type="number" id="a2-cal-bat-in" step="0.1" placeholder="V real">
+          <button class="btn" id="a2-cal-bat">Calibrar</button>
+        </div>
+        <div class="cal-row">
+          <span class="cal-lbl">ACS: mide <b id="a2-cvi">–</b> A · modelo <b id="a2-acs-model">20A</b> · signo <b id="a2-acs-sign">-1</b></span>
+          <button class="btn" id="a2-acs-zero">⊙ Cero (0 A)</button>
+          <button class="btn" id="a2-acs-model-btn">Modelo 5A/20A</button>
+          <button class="btn" id="a2-acs-sign-btn">Invertir signo</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="log-panel">
+    <h3>Registro de actividad</h3>
+    <div id="log-box"></div>
+  </div>
+
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, onValue, update }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getAuth, signInAnonymously }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey           : "AIzaSyDwXigQYn1N0nreSYCJ8h0ta63i1mjIWK8",
+  authDomain       : "microred-dc.firebaseapp.com",
+  databaseURL      : "https://microred-dc-default-rtdb.firebaseio.com",
+  projectId        : "microred-dc",
+  storageBucket    : "microred-dc.firebasestorage.app",
+  messagingSenderId: "929937213017",
+  appId            : "1:929937213017:web:73d86c234238f151195348"
+};
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+/* ── Auth anónima ── */
+const auth = getAuth(app);
+try { await signInAnonymously(auth); }
+catch (e) { console.error("[Auth] Falló el inicio de sesión anónimo:", e); }
+
+/* ── Utilidades DOM ── */
+const $ = id => document.getElementById(id);
+function setText(id, html){ const e=$(id); if(e) e.innerHTML=html; }
+function setTxt(id, v)    { const e=$(id); if(e) e.textContent=v??'–'; }
+function fmt(v, d=3)      { const n=parseFloat(v); return isNaN(n)?'–':n.toFixed(d); }
+function setPill(id, mode){ const e=$(id); if(!e)return; e.textContent=mode; e.className='mode-pill pill-'+mode; }
+
+function addLog(msg, cls=''){
+  const box = $('log-box');
+  const p   = document.createElement('p');
+  if (cls) p.className = cls;
+  p.textContent = new Date().toLocaleTimeString('es-CL') + '  ' + msg;
+  box.appendChild(p);
+  while (box.children.length > 120) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ── Escribir params por agente ── */
+const a1Ref = ref(db, "agente1/params");
+const a2Ref = ref(db, "agente2/params");
+const a3Ref = ref(db, "agente3/params");
+async function writeA(agent, fields){
+  try {
+    await update(agent === 1 ? a1Ref : agent === 2 ? a2Ref : a3Ref, fields);
+    addLog("✓ a" + agent + " ← " + JSON.stringify(fields), "ok");
+  } catch(e){
+    addLog("✗ a" + agent + " error: " + e.message, "fault");
+  }
+}
+
+/* ── ACS712: modelos y mapeo de protecciones ── */
+const ACS_5A = 0.185, ACS_20A = 0.100;
+const PROT = {1:'sobrevoltaje', 2:'subvoltaje', 3:'sobrecorriente', 4:'sensor ADS1115'};
+function protMsg(code){ return PROT[parseInt(code)||0] || 'fault'; }
+
+/* ── Parámetros de control (los que el gateway releva por CAN) ── */
+const L_H = 2.8e-3, C_F = 2200e-6;   // hardware fijo
+const PARAMS = [
+  { key:'target_v',  label:'target_v (V)',  step:'0.1',  def:'5.0'  },
+  { key:'omega_v',   label:'ω_n,v (rad/s)', step:'5',    def:'10',  max:'160'  },
+  { key:'zeta_v',    label:'ζ_v',           step:'0.05', def:'0.707'},
+  { key:'omega_i',   label:'ω_n,i (rad/s)', step:'10',   def:'100', max:'1600' },
+  { key:'zeta_i',    label:'ζ_i',           step:'0.05', def:'0.707'},
+  { key:'plant_vdc', label:'Vdc bus (V)',   step:'0.1',  def:'5.0'  },
+  { key:'kd_droop',  label:'kd droop (A)',  step:'0.1',  def:'0.1'  },
+  { key:'i_ref_max', label:'i_ref_max (A)', step:'0.1',  def:'1.0'  },
+  { key:'i_ref_min', label:'i_ref_min (A)', step:'0.1',  def:'-1.0' },
+  { key:'ov_trip',   label:'OV trip (V)',   step:'0.1',  def:'7.5'  },
+  { key:'uv_trip',   label:'UV trip (V)',   step:'0.1',  def:'0.0'  },
+  { key:'oc_trip',   label:'OC trip (A)',   step:'0.1',  def:'1.5'  },
+];
+
+function buildParamRows(agent){
+  const cont = $('a'+agent+'-params');
+  PARAMS.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'param-row';
+    row.innerHTML =
+      '<label>'+p.label+(p.max?' <small style="color:var(--amber)">máx '+p.max+' (Nyquist)</small>':'')+'</label>' +
+      '<input type="number" id="a'+agent+'-p-'+p.key+'" step="'+p.step+'"'+(p.max?' max="'+p.max+'"':'')+' value="'+p.def+'">' +
+      '<span class="current-val" id="a'+agent+'-cv-'+p.key+'">–</span>';
+    cont.appendChild(row);
+  });
+}
+buildParamRows(1);
+buildParamRows(2);
+
+function updateNote(agent){
+  const wnv = parseFloat($('a'+agent+'-p-omega_v').value);
+  const wni = parseFloat($('a'+agent+'-p-omega_i').value);
+  const zv  = parseFloat($('a'+agent+'-p-zeta_v').value);
+  const zi  = parseFloat($('a'+agent+'-p-zeta_i').value);
+  const vdc = parseFloat($('a'+agent+'-p-plant_vdc').value);
+  let txt = '';
+  if (wnv>0 && zv>0){ const kpV=2*zv*wnv*C_F, kiV=wnv*wnv*C_F; txt += 'Kp_v='+kpV.toFixed(4)+' Ki_v='+kiV.toFixed(3); }
+  if (wni>0 && zi>0 && vdc>=0.5){ const kpI=2*zi*wni*L_H/vdc, kiI=wni*wni*L_H/vdc; txt += '  |  Kp_i='+kpI.toFixed(4)+' Ki_i='+kiI.toFixed(2); }
+  if (txt) setTxt('a'+agent+'-note', txt);
+}
+[1,2].forEach(a => {
+  ['omega_v','zeta_v','omega_i','zeta_i','plant_vdc'].forEach(k => $('a'+a+'-p-'+k).addEventListener('input', () => updateNote(a)));
+  updateNote(a);
+});
+
+function applyConfig(agent){
+  const fields = {};
+  for (const p of PARAMS){
+    const v = parseFloat($('a'+agent+'-p-'+p.key).value);
+    if (isNaN(v)){ addLog('Valor inválido en '+p.label,'fault'); return; }
+    if (p.max && v > parseFloat(p.max)){
+      addLog('✗ '+p.label+' = '+v+' supera el máx Nyquist ('+p.max+' rad/s). Ajústalo.','fault'); return;
+    }
+    fields[p.key] = v;
+  }
+  writeA(agent, fields);
+}
+function syncCurrentVals(agent, d){
+  for (const p of PARAMS){ if (d[p.key] != null) setTxt('a'+agent+'-cv-'+p.key, fmt(d[p.key], 2)); }
+}
+
+/* ── Conexión / barras ── */
+function setOnline(agent, online){
+  $('a'+agent+'-dot').className = 'conn-dot ' + (online ? 'conn-on' : 'conn-off');
+  $('a'+agent+'-conn').textContent = online ? 'online' : 'offline';
+}
+function socBar(barId, pct){
+  const bar = $(barId); if(!bar) return;
+  bar.style.width = Math.max(0,Math.min(100,pct)) + '%';
+  bar.style.background = pct>60?'var(--green)':pct>30?'var(--amber)':'var(--red)';
+}
+function stamp(){ setTxt('last-update', new Date().toLocaleTimeString('es-CL')); }
+
+/* ── Estado de calibración ── */
+let a1RawA3 = NaN, a1Sign = 1, a1Model = ACS_5A;   // agente 1: se sincroniza de telemetría
+let a2Sign = -1, a2Model = ACS_20A;                 // agente 2: estado local (no hay readback); default 20A, signo -1
+function modelName(s){ return Math.abs(s-ACS_5A) < Math.abs(s-ACS_20A) ? '5A' : '20A'; }
+
+/* ════════════ GRÁFICOS ════════════ */
+function makeChart(canvasId, series){
+  return new Chart($(canvasId).getContext('2d'), {
+    type:'line',
+    data:{ labels:[], datasets: series.map(s=>({ label:s.label, data:[], borderColor:s.color,
+            backgroundColor:'transparent', borderWidth:2, pointRadius:0, tension:0.3 })) },
+    options:{ animation:false, responsive:true, maintainAspectRatio:false,
+      scales:{ x:{display:false}, y:{ ticks:{color:'#8fa3bd',font:{size:9}}, grid:{color:'rgba(255,255,255,0.05)'} } },
+      plugins:{ legend:{ labels:{color:'#8a8f9b',font:{size:10},boxWidth:10} } } }
+  });
+}
+const MAX_PTS = 80;
+const chartBus  = makeChart('chart-bus',  [{label:'V bus',color:'#16b399'}, {label:'Objetivo',color:'#8fa3bd'}]);
+const chartCurr = makeChart('chart-curr', [{label:'I out a1',color:'#f0a92b'}, {label:'I out a2',color:'#7b6fff'}]);
+function pushChart(ch, ...vals){
+  ch.data.labels.push('');
+  vals.forEach((v,i)=> ch.data.datasets[i].data.push(parseFloat(v)));
+  if (ch.data.labels.length > MAX_PTS){ ch.data.labels.shift(); ch.data.datasets.forEach(d=>d.data.shift()); }
+  ch.update('none');
+}
+let lastA2Iout = NaN;   // se actualiza en el listener del agente 2; lo grafica el del agente 1
+
+/* ── Chequeo de discrepancia del bus compartido (los 3 miden el MISMO nodo) ── */
+let lastA1Vbus = NaN, lastA2Vbus = NaN, lastA3Vbus = NaN;
+const VBUS_DISC_TH = 0.5;   // V: umbral para marcar discrepancia notable
+function updateVbusDisc(){
+  const e = $('vbus-disc'); if(!e) return;
+  const vals = [['a1',lastA1Vbus],['a2',lastA2Vbus],['a3',lastA3Vbus]].filter(x=>!isNaN(x[1]));
+  if (vals.length < 2){ e.textContent = 'Lecturas crudas: — (esperando agentes)'; e.className='vbus-disc'; return; }
+  const nums = vals.map(x=>x[1]);
+  const spread = Math.max(...nums) - Math.min(...nums);
+  const big = spread > VBUS_DISC_TH;
+  const parts = vals.map(x=>x[0]+'='+x[1].toFixed(3)).join('  ');
+  e.textContent = 'Crudas: ' + parts + '   |   Δmáx = ' + spread.toFixed(3) + ' V' + (big ? '  ⚠ discrepan' : '  ✓ cercanas');
+  e.className = 'vbus-disc' + (big ? ' warn' : '');
+}
+
+/* ── Consenso distribuido del voltaje de bus (opción B) ──
+   Cada agente estima el promedio del bus intercambiando su estimación por CAN;
+   el gateway (AG1) publica /consenso {a1,a2,a3,v,spread,n}. Aquí solo se
+   muestra: v = valor de red acordado, spread = desacuerdo residual. */
+let consData = null;
+function updateConsensus(){
+  const e = $('vbus-cons'); if(!e) return;
+  if(!consData || !(consData.n>=1)){ e.textContent='Consenso: — (esperando agentes)'; e.className='vbus-disc'; return; }
+  const parts=['a1','a2','a3'].filter(k=>consData[k]!=null)
+    .map(k=>k+'='+parseFloat(consData[k]).toFixed(3)).join('  ');
+  const sp=parseFloat(consData.spread);
+  e.textContent='Consenso = '+parseFloat(consData.v).toFixed(3)+' V   ('+parts+'   ·  Δ estimaciones = '+sp.toFixed(3)+' V · n='+consData.n+')';
+  e.className='vbus-disc'+(sp>0.05?' warn':'');
+}
+
+/* ════════════ LISTENERS ════════════ */
+
+/* Agente 1 — telemetría completa (/agente1/telemetria). Marca el ritmo de los gráficos. */
+onValue(ref(db, "agente1/telemetria"), (snap) => {
+  const d = snap.val();
+  if (!d){ setOnline(1,false); return; }
+  setOnline(1, true);
+  stamp();
+
+  const socPct = parseFloat(d.soc||0)*100;
+  setText('a1-vbus', fmt(d.v_bus,3)+'<span class="s-unit">V</span>');
+  setText('a1-vbat', fmt(d.v_bat,3)+'<span class="s-unit">V</span>');
+  setText('a1-iout', fmt(d.i_out,3)+'<span class="s-unit">A</span>');
+  setText('a1-iref', fmt(d.i_ref,3)+'<span class="s-unit">A</span>');
+  setText('a1-soc',  fmt(socPct,1)+'<span class="s-unit">%</span>');
+  setText('a1-duty', fmt(parseFloat(d.duty_applied)*100,1)+'<span class="s-unit">%</span>');
+  setText('a1-pout', fmt(parseFloat(d.i_out)*parseFloat(d.v_bus),3)+'<span class="s-unit">W</span>');  // P = i·v calculada en web
+  socBar('a1-soc-bar', socPct);
+  lastA1Vbus = parseFloat(d.v_bus);
+  updateVbusDisc();
+
+  setPill('a1-pill-run',  d.run_mode || 'OFF');
+  setPill('a1-pill-topo', d.topology || '–');
+
+  /* Alertas */
+  const sensDown = d.hw_level === 'error';
+  $('a1-sensor-banner').style.display = sensDown ? 'flex' : 'none';
+  const f = d.fault === true || d.fault === 'true';
+  $('a1-fault-banner').style.display = f ? 'flex' : 'none';
+  if (f) setTxt('a1-fault-msg', '⚠ Protección de ' + protMsg(d.fault_code) + ' activada');
+
+  /* Calibración (datos crudos del agente 1) */
+  a1RawA3 = parseFloat(d.rawVoltsA3);
+  setTxt('a1-raw-bus', fmt(d.rawVoltsA0,4));
+  setTxt('a1-div-bus', fmt(d.divFactorBus,3));
+  setTxt('a1-cvb',     fmt(d.v_bus,3));
+  setTxt('a1-raw-bat', fmt(d.rawVoltsA1,4));
+  setTxt('a1-div-bat', fmt(d.divFactorBat,3));
+  setTxt('a1-cvbat',   fmt(d.v_bat,3));
+  setTxt('a1-raw-acs', fmt(d.rawVoltsA3,4));
+  setTxt('a1-acs-off', fmt(d.acsOffset,4));
+  setTxt('a1-cvi',     fmt(d.i_out,3));
+  if (d.acsSign != null)        { a1Sign = parseFloat(d.acsSign) >= 0 ? 1 : -1; setTxt('a1-acs-sign', a1Sign>0?'+1':'-1'); }
+  if (d.acsSensitivity != null) { a1Model = parseFloat(d.acsSensitivity); setTxt('a1-acs-model', modelName(a1Model)); }
+
+  syncCurrentVals(1, d);
+
+  /* Gráficos (ritmo del agente 1; corriente del agente 2 = último valor recibido) */
+  pushChart(chartBus, d.v_bus, d.target_v);
+  pushChart(chartCurr, d.i_out, isNaN(lastA2Iout)?0:lastA2Iout);
+});
+
+/* Agente 2 — telemetría relevada por CAN (/agentes/agente2) */
+onValue(ref(db, "agentes/agente2"), (snap) => {
+  const d = snap.val();
+  if (!d){ setOnline(2,false); setPill('a2-pill-run','OFF'); setPill('a2-pill-topo','–'); return; }
+
+  const online = d.online === true || d.online === 'true';
+  setOnline(2, online);
+  /* Estado real del control (lo reporta el agente 2 por CAN), no el enlace. */
+  setPill('a2-pill-run',  online ? (d.run_mode || 'OFF') : 'OFF');
+  setPill('a2-pill-topo', online ? (d.topology || '–')  : '–');
+  if (online) stamp();
+
+  const socPct = parseFloat(d.soc||0)*100;
+  lastA2Iout = parseFloat(d.i_out);
+  setText('a2-vbus', fmt(d.v_bus,3)+'<span class="s-unit">V</span>');
+  setText('a2-vbat', fmt(d.v_bat,3)+'<span class="s-unit">V</span>');
+  setText('a2-iout', fmt(d.i_out,3)+'<span class="s-unit">A</span>');
+  setText('a2-pout', fmt(parseFloat(d.i_out)*parseFloat(d.v_bus),3)+'<span class="s-unit">W</span>');  // P = i·v calculada en web
+  setText('a2-soc',  fmt(socPct,1)+'<span class="s-unit">%</span>');
+  socBar('a2-soc-bar', socPct);
+  lastA2Vbus = parseFloat(d.v_bus);
+  updateVbusDisc();
+
+  /* Calibración (verificación; el agente 2 no envía sus raws) */
+  setTxt('a2-cvb',   fmt(d.v_bus,3));
+  setTxt('a2-cvbat', fmt(d.v_bat,3));
+  setTxt('a2-cvi',   fmt(d.i_out,3));
+
+  /* Alertas */
+  const f = d.fault === true || d.fault === 'true';
+  const c = parseInt(d.fault_code)||0;
+  $('a2-sensor-banner').style.display = (f && c === 4) ? 'flex' : 'none';
+  $('a2-fault-banner').style.display  = f ? 'flex' : 'none';
+  if (f) setTxt('a2-fault-msg', '⚠ Protección de ' + protMsg(c) + ' activada');
+});
+
+/* Agente 2 — eco de params almacenados (/agente2/params) */
+onValue(ref(db, "agente2/params"), (snap) => {
+  const d = snap.val();
+  if (d) syncCurrentVals(2, d);
+});
+
+/* Agente 3 — solo su v_bus, para el consenso del bus compartido (opción C).
+   El control detallado del AG3 vive en su propia página. */
+onValue(ref(db, "agentes/agente3"), (snap) => {
+  const d = snap.val();
+  const online = d && (d.online === true || d.online === 'true');
+  lastA3Vbus = (d && online && d.v_bus != null) ? parseFloat(d.v_bus) : NaN;
+  updateVbusDisc();
+});
+
+/* Consenso distribuido del voltaje de bus (opción B) — publicado por el gateway */
+onValue(ref(db, "consenso"), (snap) => {
+  consData = snap.val();
+  updateConsensus();
+});
+
+/* ════════════ BOTONES ════════════ */
+function initUI(){
+  /* Agente 1 — run + config */
+  $('a1-on').addEventListener('click',    () => writeA(1, { run_mode:1 }));
+  $('a1-off').addEventListener('click',   () => writeA(1, { run_mode:0 }));
+  $('a1-clear').addEventListener('click', () => writeA(1, { run_mode:0, fault_ack:true }));
+  $('a1-apply').addEventListener('click', () => applyConfig(1));
+
+  /* Agente 1 — calibración (directa a /agente1/params) */
+  $('a1-cal-bus').addEventListener('click', () => {
+    const v = parseFloat($('a1-cal-bus-in').value);
+    if (isNaN(v) || v < 0.1){ addLog('Voltaje de bus inválido','fault'); return; }
+    writeA(1, { cal_bus: v });
+  });
+  $('a1-cal-bat').addEventListener('click', () => {
+    const v = parseFloat($('a1-cal-bat-in').value);
+    if (isNaN(v) || v < 0.1){ addLog('Voltaje de batería inválido','fault'); return; }
+    writeA(1, { cal_bat: v });
+  });
+  $('a1-acs-zero').addEventListener('click', () => {
+    // Cero por firmware usando la corriente FILTRADA (robusto a ruido)
+    writeA(1, { acs_zero: 1 });
+  });
+  $('a1-acs-model-btn').addEventListener('click', () => {
+    a1Model = (modelName(a1Model) === '5A') ? ACS_20A : ACS_5A;
+    writeA(1, { acs_sensitivity: a1Model });
+  });
+  $('a1-acs-sign-btn').addEventListener('click', () => {
+    a1Sign = -a1Sign;
+    writeA(1, { acs_sign: a1Sign });
+  });
+
+  /* Agente 2 — run + config (relevados por CAN) */
+  $('a2-on').addEventListener('click',    () => writeA(2, { run_mode:1 }));
+  $('a2-off').addEventListener('click',   () => writeA(2, { run_mode:0 }));
+  $('a2-clear').addEventListener('click', () => writeA(2, { run_mode:0, fault_ack:true }));
+  $('a2-apply').addEventListener('click', () => applyConfig(2));
+
+  /* Agente 2 — calibración (auto: comandos one-shot relevados por CAN) */
+  $('a2-cal-bus').addEventListener('click', () => {
+    const v = parseFloat($('a2-cal-bus-in').value);
+    if (isNaN(v) || v < 0.1){ addLog('Voltaje de bus inválido','fault'); return; }
+    writeA(2, { cal_bus: v });
+  });
+  $('a2-cal-bat').addEventListener('click', () => {
+    const v = parseFloat($('a2-cal-bat-in').value);
+    if (isNaN(v) || v < 0.1){ addLog('Voltaje de batería inválido','fault'); return; }
+    writeA(2, { cal_bat: v });
+  });
+  $('a2-acs-zero').addEventListener('click', () => writeA(2, { acs_zero: 1 }));
+  function sendA2Sens(){ writeA(2, { acs_sens_signed: a2Sign * a2Model }); }
+  $('a2-acs-model-btn').addEventListener('click', () => {
+    a2Model = (modelName(a2Model) === '5A') ? ACS_20A : ACS_5A;
+    setTxt('a2-acs-model', modelName(a2Model));
+    sendA2Sens();
+  });
+  $('a2-acs-sign-btn').addEventListener('click', () => {
+    a2Sign = -a2Sign;
+    setTxt('a2-acs-sign', a2Sign>0?'+1':'-1');
+    sendA2Sens();
+  });
+
+  addLog('Panel multi-agente listo.', 'cmd');
+}
+
+/* Ejecuta el init aunque DOMContentLoaded ya se haya disparado durante el await de auth */
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initUI);
+else initUI();
+</script>
+</body>
+</html>

@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Buck-Boost — Control Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<style>
+:root {
+  --bg:#0e1621; --bg2:#16202e; --bg3:#1c2a3a;
+  --border:rgba(143,163,189,0.14);
+  --text:#eef4fb; --muted:#8fa3bd;
+  --green:#16b399; --red:#e2504a; --amber:#f0a92b; --blue:#3d8ce0;
+  --font-mono:'Space Mono',monospace;
+  --font-ui:'Syne',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font-ui);background:var(--bg);color:var(--text);min-height:100vh;}
+.shell{max-width:1200px;margin:0 auto;padding:24px 20px 48px;}
+
+header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.logo{display:flex;align-items:center;gap:14px;}
+.logo-mark{width:34px;height:34px;border:2px solid var(--amber);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+h1{font-size:18px;font-weight:800;letter-spacing:.04em;}
+h1 span{color:var(--muted);font-weight:400;}
+.nav-link{font-family:var(--font-mono);font-size:11px;color:var(--muted);text-decoration:none;padding:6px 12px;border:1px solid var(--border);border-radius:6px;transition:border-color .2s,color .2s;}
+.nav-link:hover{border-color:var(--green);color:var(--green);}
+.fb-badge{font-family:var(--font-mono);font-size:10px;padding:4px 10px;border-radius:6px;background:rgba(255,167,38,.08);border:1px solid rgba(255,167,38,.25);color:#ffa726;letter-spacing:.06em;}
+
+#fault-banner{display:none;background:rgba(226,80,74,.1);border:1px solid rgba(226,80,74,.35);border-radius:10px;padding:12px 18px;margin-bottom:16px;gap:12px;font-family:var(--font-mono);font-size:12px;color:var(--red);align-items:center;justify-content:space-between;}
+
+.hw-banner{display:none;border-radius:10px;padding:12px 18px;margin-bottom:12px;font-family:var(--font-mono);font-size:12px;align-items:center;gap:10px;}
+.hw-warn{background:rgba(240,169,43,.10);border:1px solid rgba(240,169,43,.35);color:var(--amber);}
+.hw-error{background:rgba(226,80,74,.10);border:1px solid rgba(226,80,74,.35);color:var(--red);}
+.hw-critical{background:rgba(226,80,74,.18);border:2px solid var(--red);color:var(--red);animation:blink-border 1s ease-in-out infinite;}
+@keyframes blink-border{0%,100%{border-color:var(--red)}50%{border-color:rgba(226,80,74,.2)}}
+
+.status-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px;}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+.stat-card .s-label{font-size:9px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
+.stat-card .s-value{font-family:var(--font-mono);font-size:22px;font-weight:700;line-height:1;}
+.stat-card .s-unit{font-size:11px;color:var(--muted);margin-left:2px;}
+.col-green{color:var(--green);}.col-amber{color:var(--amber);}.col-blue{color:var(--blue);}
+
+.chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px;}
+.chart-card canvas{height:180px!important;}
+.chart-label{font-family:var(--font-mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+
+.control-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;}
+@media(max-width:700px){.control-grid{grid-template-columns:1fr;}}
+.ctrl-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;}
+.ctrl-card h3{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;font-family:var(--font-mono);}
+
+.btn-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
+.btn{font-family:var(--font-mono);font-size:11px;font-weight:700;padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;letter-spacing:.05em;transition:all .15s;}
+.btn:hover{border-color:var(--blue);color:var(--blue);}
+.btn:active{transform:scale(.97);}
+.btn.green{background:rgba(22,179,153,.08);border-color:rgba(22,179,153,.35);color:var(--green);}
+.btn.green:hover{background:rgba(22,179,153,.18);}
+.btn.red{background:rgba(226,80,74,.08);border-color:rgba(226,80,74,.35);color:var(--red);}
+.btn.red:hover{background:rgba(226,80,74,.18);}
+.btn.amber{background:rgba(240,169,43,.08);border-color:rgba(240,169,43,.35);color:var(--amber);}
+.btn.amber:hover{background:rgba(240,169,43,.18);}
+.btn.full{width:100%;}
+
+.param-list{display:flex;flex-direction:column;gap:10px;}
+.param-row{display:grid;grid-template-columns:1fr 110px 72px;align-items:center;gap:8px;}
+.param-row label{font-size:11px;color:var(--muted);font-family:var(--font-mono);}
+.param-row input[type=number]{background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;font-family:var(--font-mono);font-size:12px;width:100%;transition:border-color .15s;}
+.param-row input[type=number]:focus{outline:none;border-color:var(--blue);}
+.current-val{font-family:var(--font-mono);font-size:11px;color:var(--amber);text-align:right;}
+.sep{height:1px;background:var(--border);margin:10px 0;}
+
+.mode-pill{display:inline-block;font-family:var(--font-mono);font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:.08em;text-transform:uppercase;}
+.pill-BOOST{background:rgba(22,179,153,.12);color:var(--green);border:1px solid rgba(22,179,153,.25);}
+.pill-BUCK{background:rgba(226,80,74,.12);color:var(--red);border:1px solid rgba(226,80,74,.25);}
+.pill-OFF{background:rgba(90,95,107,.12);color:var(--muted);border:1px solid rgba(90,95,107,.25);}
+.pill-MANUAL{background:rgba(240,169,43,.12);color:var(--amber);border:1px solid rgba(240,169,43,.25);}
+.pill-AUTO_FFPI{background:rgba(22,179,153,.12);color:var(--green);border:1px solid rgba(22,179,153,.25);}
+
+.log-panel{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;}
+.log-panel h3{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-family:var(--font-mono);}
+#log-box{font-family:var(--font-mono);font-size:11px;color:var(--muted);height:200px;overflow-y:auto;background:var(--bg3);border-radius:8px;padding:10px 12px;line-height:1.8;}
+#log-box p{margin:0;}
+#log-box p.fault{color:var(--red);}
+#log-box p.ok{color:var(--green);}
+#log-box p.cmd{color:var(--blue);}
+
+.conn-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;margin-right:6px;animation:pulse 1.5s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <div class="logo">
+      <div class="logo-mark">⚡</div>
+      <div>
+        <h1>Buck-Boost <span>/ Control Room</span></h1>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:2px">
+          ESP32 FF+PI · Dual-Core · Firebase RT
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div id="device-status" style="display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;padding:5px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card)">
+        <span id="device-dot" style="width:8px;height:8px;border-radius:50%;background:#555;flex-shrink:0;transition:background .4s"></span>
+        <span id="device-label" style="color:var(--muted)">Esperando...</span>
+      </div>
+      <span class="fb-badge">FIREBASE LIVE</span>
+      <a href="/corriente.html" class="nav-link">∿ Control Corriente</a>
+      <a href="/" class="nav-link">← Monitoreo CAN</a>
+    </div>
+  </header>
+
+  <div id="fault-banner">
+    <span>⚠ FAULT ACTIVO — Conversor detenido por protección</span>
+    <button class="btn red" id="btn-clear-fault">Limpiar Fault</button>
+  </div>
+
+  <div id="hw-banner-warn"     class="hw-banner hw-warn">    <span>⚠</span><span id="hw-msg-warn"></span></div>
+  <div id="hw-banner-error"    class="hw-banner hw-error">   <span>✖</span><span id="hw-msg-error"></span></div>
+  <div id="hw-banner-critical" class="hw-banner hw-critical"><span>✖✖</span><span id="hw-msg-critical"></span></div>
+
+  <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">
+    Telemetría en tiempo real · <span id="last-update">esperando datos...</span>
+  </div>
+
+  <div class="status-bar">
+    <div class="stat-card"><div class="s-label">V BUS / A2</div><div class="s-value col-amber" id="s-vbus">–<span class="s-unit">V</span></div></div>
+    <div class="stat-card"><div class="s-label">V AG1 / A1</div><div class="s-value col-blue"  id="s-vag1">–<span class="s-unit">V</span></div></div>
+    <div class="stat-card"><div class="s-label">Vout (ctrl)</div><div class="s-value col-green" id="s-vout">–<span class="s-unit">V</span></div></div>
+    <div class="stat-card"><div class="s-label">Target</div><div class="s-value" id="s-target">–<span class="s-unit">V</span></div></div>
+    <div class="stat-card"><div class="s-label">Ton aplicado</div><div class="s-value" id="s-ton">–<span class="s-unit">µs</span></div></div>
+    <div class="stat-card"><div class="s-label">Topología</div><div id="s-topo" class="mode-pill pill-OFF">–</div></div>
+    <div class="stat-card">
+      <div class="s-label">Run Mode</div>
+      <div id="s-run" class="mode-pill pill-OFF">–</div>
+      <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted);margin-top:5px">Solicitado: <span id="s-req-run" style="color:var(--blue)">–</span></div>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-label">Vout vs Target — últimas 80 muestras</div>
+    <canvas id="chart-main"></canvas>
+  </div>
+
+  <div class="control-grid">
+
+    <div class="ctrl-card">
+      <h3>Topología &amp; modo de operación</h3>
+      <div class="btn-row">
+        <button class="btn"   id="btn-boost">BOOST</button>
+        <button class="btn"   id="btn-buck">BUCK</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn amber" id="btn-preset-boost">Preset BOOST</button>
+        <button class="btn amber" id="btn-preset-buck">Preset BUCK</button>
+      </div>
+      <div class="sep"></div>
+      <div class="btn-row">
+        <button class="btn green" id="btn-auto">▶ AUTO FF+PI</button>
+        <button class="btn red"   id="btn-off">■ OFF</button>
+      </div>
+      <div class="sep"></div>
+      <div style="font-size:10px;color:var(--muted);font-family:var(--font-mono);margin-bottom:6px">MANUAL TON (µs)</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="number" id="inp-manual-ton" min="0" max="95" step="1" value="10"
+               style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-family:var(--font-mono);font-size:12px">
+        <button class="btn" id="btn-manual-ton">Aplicar</button>
+      </div>
+    </div>
+
+    <div class="ctrl-card">
+      <h3>Control PI + Feedforward</h3>
+      <div class="param-list">
+        <div class="param-row"><label>Target V</label><input type="number" id="p-target_v" step="0.05" min="0.5" max="6"  value="5.00"><span class="current-val" id="cv-target_v">–</span></div>
+        <div class="param-row"><label>Kp</label>      <input type="number" id="p-kp"       step="0.5"  min="0"   max="40" value="10">  <span class="current-val" id="cv-kp">–</span></div>
+        <div class="param-row"><label>Ki</label>      <input type="number" id="p-ki"       step="0.5"  min="0"   max="40" value="5">   <span class="current-val" id="cv-ki">–</span></div>
+        <div class="param-row"><label>FF Scale</label><input type="number" id="p-ff_scale" step="0.05" min="0"   max="2"  value="1.5"> <span class="current-val" id="cv-ff_scale">–</span></div>
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn full green" id="btn-apply-pi">Aplicar Kp · Ki · FF · Target</button>
+      </div>
+    </div>
+
+    <div class="ctrl-card">
+      <h3>Límites PWM</h3>
+      <div class="param-list">
+        <div class="param-row"><label>Ton Max (µs)</label>  <input type="number" id="p-ton_max_us"  step="1"   min="0" max="49" value="47"><span class="current-val" id="cv-ton_max_us">–</span></div>
+        <div class="param-row"><label>Ton Hard (µs)</label> <input type="number" id="p-ton_hard_us" step="1"   min="0" max="49" value="49"><span class="current-val" id="cv-ton_hard_us">–</span></div>
+        <div class="param-row"><label>Min Off (µs)</label>  <input type="number" id="p-min_off_us"  step="0.5" min="0" max="40" value="3"> <span class="current-val" id="cv-min_off_us">–</span></div>
+        <div class="param-row"><label>Slew Up (µs)</label>  <input type="number" id="p-slew_up"     step="0.1" min="0.01" max="10" value="0.5"><span class="current-val" id="cv-slew_up">–</span></div>
+        <div class="param-row"><label>Slew Down (µs)</label><input type="number" id="p-slew_down"   step="0.1" min="0.01" max="20" value="3">  <span class="current-val" id="cv-slew_down">–</span></div>
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn full" id="btn-apply-limits">Aplicar límites</button>
+      </div>
+    </div>
+
+    <div class="ctrl-card">
+      <h3>Estado del conversor</h3>
+      <div style="font-family:var(--font-mono);font-size:11px;line-height:2.1">
+        <div style="color:var(--muted)">V BUS:   <span id="inf-vbus"   style="color:var(--amber)">–</span> V</div>
+        <div style="color:var(--muted)">V AG1:   <span id="inf-vag1"   style="color:var(--blue)">–</span> V</div>
+        <div style="color:var(--muted)">Ton apl: <span id="inf-ton"    style="color:var(--amber)">–</span> µs</div>
+        <div style="color:var(--muted)">Kp / Ki: <span id="inf-kpki"  style="color:var(--text)">– / –</span></div>
+        <div style="color:var(--muted)">FF Scale:<span id="inf-ff"     style="color:var(--text)">–</span></div>
+        <div style="color:var(--muted)">Target:  <span id="inf-target" style="color:var(--green)">–</span> V</div>
+      </div>
+      <div class="sep"></div>
+      <button class="btn red full" id="btn-clear-fault2">🔄 Clear Fault</button>
+    </div>
+
+    <!-- Calibración sensores -->
+    <div class="ctrl-card" style="grid-column:1/-1">
+      <h3>Calibración sensores de voltaje</h3>
+      <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-bottom:14px;line-height:1.7">
+        Mide el voltaje real con un multímetro, ingrésalo y presiona Calibrar.<br>
+        La ESP32 calculará el nuevo factor de divisor automáticamente.
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+        <!-- Canal A0 / V_BUS -->
+        <div>
+          <div style="font-size:10px;color:var(--amber);font-family:var(--font-mono);margin-bottom:8px">
+            CANAL A0 — V BUS / V SALIDA BOOST
+          </div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);line-height:2">
+            Crudo ADS:  <span id="cal-raw-a0"  style="color:var(--text)">–</span> V<br>
+            Factor div: <span id="cal-div-a0"  style="color:var(--amber)">–</span><br>
+            V calculada:<span id="cal-vbus-a0" style="color:var(--green)">–</span> V
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+            <input type="number" id="cal-inp-a0" step="0.01" min="0.1" max="30" placeholder="Voltaje real (V)"
+                   style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;
+                          color:var(--text);padding:7px 10px;font-family:var(--font-mono);font-size:12px">
+            <button class="btn amber" id="btn-cal-a0">Calibrar A0</button>
+          </div>
+        </div>
+
+        <!-- Canal A1 / V_AG1 -->
+        <div>
+          <div style="font-size:10px;color:var(--blue);font-family:var(--font-mono);margin-bottom:8px">
+            CANAL A1 — V AG1 / V ENTRADA BOOST
+          </div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);line-height:2">
+            Crudo ADS:  <span id="cal-raw-a1"  style="color:var(--text)">–</span> V<br>
+            Factor div: <span id="cal-div-a1"  style="color:var(--blue)">–</span><br>
+            V calculada:<span id="cal-vag1-a1" style="color:var(--green)">–</span> V
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+            <input type="number" id="cal-inp-a1" step="0.01" min="0.1" max="30" placeholder="Voltaje real (V)"
+                   style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;
+                          color:var(--text);padding:7px 10px;font-family:var(--font-mono);font-size:12px">
+            <button class="btn" id="btn-cal-a1">Calibrar A1</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="log-panel">
+    <h3><span class="conn-dot"></span>Log · Firebase Realtime</h3>
+    <div id="log-box"></div>
+  </div>
+
+</div>
+
+<!-- Todo el JS en un único módulo -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, onValue, update }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getAuth, signInAnonymously }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+/* ── Config Firebase ── */
+const firebaseConfig = {
+  apiKey           : "AIzaSyDwXigQYn1N0nreSYCJ8h0ta63i1mjIWK8",
+  authDomain       : "microred-dc.firebaseapp.com",
+  databaseURL      : "https://microred-dc-default-rtdb.firebaseio.com",
+  projectId        : "microred-dc",
+  storageBucket    : "microred-dc.firebasestorage.app",
+  messagingSenderId: "929937213017",
+  appId            : "1:929937213017:web:73d86c234238f151195348"
+};
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+/* ── Auth anónima: necesaria para que las reglas permitan leer/escribir ── */
+const auth = getAuth(app);
+try {
+  await signInAnonymously(auth);
+} catch (e) {
+  console.error("[Auth] Falló el inicio de sesión anónimo:", e);
+}
+
+const paramsRef = ref(db, "conversor/params");
+
+/* ── Escribir params en Firebase ── */
+async function writeParams(fields) {
+  try {
+    await update(paramsRef, fields);
+    addLog("✓ Firebase actualizado: " + JSON.stringify(fields), "ok");
+  } catch(e) {
+    addLog("✗ Error Firebase: " + e.message, "fault");
+  }
+}
+
+/* ── Comandos de modo → campos numéricos ── */
+function cmdToParams(cmd) {
+  const p = {};
+  if      (cmd === 'off')          { p.run_mode = 0; }
+  else if (cmd === 'auto')         { p.run_mode = 2; }
+  else if (cmd === 'manual')       { p.run_mode = 1; }
+  else if (cmd === 'clear_fault')  { p.run_mode = 0; p.fault_ack = true; }
+  else if (cmd === 'mode_boost')   { p.topology = 1; p.run_mode = 0; }
+  else if (cmd === 'mode_buck')    { p.topology = 0; p.run_mode = 0; }
+  else if (cmd === 'preset_boost') {
+    Object.assign(p, {topology:1,run_mode:0,target_v:5.0,kp:10,ki:2,
+      ff_scale:1.2,ton_max_us:19,ton_hard_us:22,min_off_us:8,slew_up:1.0,slew_down:2.0});
+  }
+  else if (cmd === 'preset_buck')  {
+    Object.assign(p, {topology:0,run_mode:0,target_v:3.0,kp:6,ki:1,
+      ff_scale:1.0,ton_max_us:30,ton_hard_us:37,min_off_us:8,slew_up:0.5,slew_down:3.0});
+  }
+  return p;
+}
+
+/* ── Chart ── */
+const MAX_PTS = 80;
+const chartLabels = [], dataVout = [], dataTarget = [];
+const chart = new Chart(
+  document.getElementById('chart-main').getContext('2d'), {
+    type:'line',
+    data:{ labels:chartLabels, datasets:[
+      {label:'Vout',  data:dataVout,   borderColor:'#f0a92b',borderWidth:1.5,pointRadius:0,fill:false,tension:.3},
+      {label:'Target',data:dataTarget, borderColor:'#16b399',borderWidth:1.2,borderDash:[6,4],pointRadius:0,fill:false,tension:0}
+    ]},
+    options:{
+      animation:false,responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:true,labels:{color:'#8fa3bd',font:{family:'Space Mono',size:10},boxWidth:12,padding:12}}},
+      scales:{x:{display:false},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8fa3bd',font:{family:'Space Mono',size:10}}}}
+    }
+  }
+);
+
+function pushChart(vout, target) {
+  chartLabels.push(new Date().toLocaleTimeString('es-CL'));
+  dataVout.push(+vout); dataTarget.push(+target);
+  if (chartLabels.length > MAX_PTS) { chartLabels.shift(); dataVout.shift(); dataTarget.shift(); }
+  chart.update('none');
+}
+
+/* ── Utilidades DOM ── */
+function setText(id, html) { const e=document.getElementById(id); if(e) e.innerHTML=html; }
+function setCV(id, val)    { const e=document.getElementById(id); if(e) e.textContent=val??'–'; }
+function setPill(id, mode) { const e=document.getElementById(id); if(!e)return; e.textContent=mode; e.className='mode-pill pill-'+mode; }
+function fmt(v, dec)       { const n=parseFloat(v); return isNaN(n)?'–':n.toFixed(dec); }
+function getNum(id)        { return parseFloat(document.getElementById(id).value); }
+
+let lastHwLevel = '';
+
+function addLog(msg, cls='') {
+  const box=document.getElementById('log-box');
+  const p=document.createElement('p');
+  if(cls) p.className=cls;
+  p.textContent=new Date().toLocaleTimeString('es-CL')+'  '+msg;
+  box.appendChild(p);
+  while(box.children.length>120) box.removeChild(box.firstChild);
+  box.scrollTop=box.scrollHeight;
+}
+
+/* ── updateUI ── */
+function updateUI(d) {
+  const topo = d.topology||'BOOST';
+  const vout = topo==='BOOST' ? parseFloat(d.v_bus||0) : parseFloat(d.v_ag1||0);
+  const tgt  = parseFloat(d.target_v||0);
+
+  setText('s-vbus',  fmt(d.v_bus,3)   +'<span class="s-unit">V</span>');
+  setText('s-vag1',  fmt(d.v_ag1,3)   +'<span class="s-unit">V</span>');
+  setText('s-vout',  fmt(vout,3)      +'<span class="s-unit">V</span>');
+  setText('s-target',fmt(d.target_v,3)+'<span class="s-unit">V</span>');
+  setText('s-ton',   fmt(d.ton_applied,3)+'<span class="s-unit">µs</span>');
+  setPill('s-topo', topo);
+  setPill('s-run',  d.run_mode||'OFF');
+  const reqEl=document.getElementById('s-req-run');
+  if(reqEl) reqEl.textContent=d.requested_mode||'–';
+
+  document.getElementById('fault-banner').style.display = d.fault?'flex':'none';
+
+  const level=d.hw_level||'ok', msg=d.hw_msg||'';
+  document.getElementById('hw-banner-warn').style.display     = level==='warn'    ?'flex':'none';
+  document.getElementById('hw-banner-error').style.display    = level==='error'   ?'flex':'none';
+  document.getElementById('hw-banner-critical').style.display = level==='critical'?'flex':'none';
+  if(level==='warn')     document.getElementById('hw-msg-warn').textContent=msg;
+  if(level==='error')    document.getElementById('hw-msg-error').textContent=msg;
+  if(level==='critical') document.getElementById('hw-msg-critical').textContent=msg;
+
+  document.getElementById('inf-vbus').textContent   = fmt(d.v_bus,3);
+  document.getElementById('inf-vag1').textContent   = fmt(d.v_ag1,3);
+  document.getElementById('inf-ton').textContent    = fmt(d.ton_applied,3);
+  document.getElementById('inf-kpki').textContent   = fmt(d.kp,2)+' / '+fmt(d.ki,2);
+  document.getElementById('inf-ff').textContent     = fmt(d.ff_scale,3);
+  document.getElementById('inf-target').textContent = fmt(d.target_v,3);
+
+  setCV('cv-target_v', d.target_v);
+  setCV('cv-kp',       d.kp);
+  setCV('cv-ki',       d.ki);
+  setCV('cv-ff_scale', d.ff_scale);
+  setCV('cv-ton_max_us',  d.ton_max_us);
+  setCV('cv-ton_hard_us', d.ton_hard_us);
+  setCV('cv-min_off_us',  d.min_off_us);
+  setCV('cv-slew_up',     d.slew_up);
+  setCV('cv-slew_down',   d.slew_down);
+
+  // Calibración
+  const e = (id) => document.getElementById(id);
+  if (e('cal-raw-a0'))  e('cal-raw-a0').textContent  = fmt(d.raw_a0, 4);
+  if (e('cal-div-a0'))  e('cal-div-a0').textContent  = fmt(d.div_a0, 4);
+  if (e('cal-vbus-a0')) e('cal-vbus-a0').textContent = fmt(d.v_bus,  3);
+  if (e('cal-raw-a1'))  e('cal-raw-a1').textContent  = fmt(d.raw_a1, 4);
+  if (e('cal-div-a1'))  e('cal-div-a1').textContent  = fmt(d.div_a1, 4);
+  if (e('cal-vag1-a1')) e('cal-vag1-a1').textContent = fmt(d.v_ag1,  3);
+
+  const tsEl=document.getElementById('last-update');
+  if(tsEl) tsEl.textContent='Últ. actualización: '+new Date().toLocaleTimeString('es-CL');
+
+  pushChart(vout, tgt);
+
+  if(level!==lastHwLevel) {
+    if(level==='warn')     addLog('HW: '+msg,'cmd');
+    if(level==='error')    addLog('HW ERROR: '+msg,'fault');
+    if(level==='critical') addLog('HW CRÍTICO: '+msg,'fault');
+    if(level==='ok'&&lastHwLevel!=='ok'&&lastHwLevel!=='') addLog('HW: Hardware restaurado','ok');
+    lastHwLevel=level;
+  }
+  if(d.fault) addLog('FAULT activo en conversor','fault');
+}
+
+/* ── Estado de conexión ESP32 ── */
+const dot   = document.getElementById('device-dot');
+const label = document.getElementById('device-label');
+let offlineTimer = null;
+
+function setDeviceOnline() {
+  dot.style.background = '#16b399';
+  dot.style.boxShadow  = '0 0 6px #16b399';
+  label.style.color    = '#16b399';
+  label.textContent    = 'ESP32 conectada';
+  clearTimeout(offlineTimer);
+  offlineTimer = setTimeout(setDeviceOffline, 20000);   // holgura: la telemetría llega con latencia
+}
+
+function setDeviceOffline() {
+  dot.style.background = '#e2504a';
+  dot.style.boxShadow  = 'none';
+  label.style.color    = '#e2504a';
+  label.textContent    = 'ESP32 desconectada';
+}
+
+/* ── Listener telemetría ── */
+onValue(ref(db,"conversor/telemetria"), (snap) => {
+  const d=snap.val();
+  if(!d) {
+    setDeviceOffline();
+    updateUI({v_bus:'–',v_ag1:'–',target_v:'–',ton_cmd:'–',
+      run_mode:'OFF',requested_mode:'OFF',topology:'BOOST',
+      fault:false,kp:'–',ki:'–',ff_scale:'–',
+      hw_level:'warn',hw_msg:'Esperando primera telemetría del ESP32...',hw_status:1});
+    return;
+  }
+  setDeviceOnline();
+  updateUI(d);
+});
+
+/* ── Botones — todos con addEventListener ── */
+function initControlUI() {
+  // Modo y topología
+  document.getElementById('btn-boost').addEventListener('click',        () => writeParams(cmdToParams('mode_boost')));
+  document.getElementById('btn-buck').addEventListener('click',         () => writeParams(cmdToParams('mode_buck')));
+  document.getElementById('btn-preset-boost').addEventListener('click', () => writeParams(cmdToParams('preset_boost')));
+  document.getElementById('btn-preset-buck').addEventListener('click',  () => writeParams(cmdToParams('preset_buck')));
+  document.getElementById('btn-auto').addEventListener('click',         () => writeParams(cmdToParams('auto')));
+  document.getElementById('btn-off').addEventListener('click',          () => writeParams(cmdToParams('off')));
+  document.getElementById('btn-clear-fault').addEventListener('click',  () => writeParams(cmdToParams('clear_fault')));
+  document.getElementById('btn-clear-fault2').addEventListener('click', () => writeParams(cmdToParams('clear_fault')));
+
+  // Manual Ton
+  document.getElementById('btn-manual-ton').addEventListener('click', () => {
+    const v = getNum('inp-manual-ton');
+    if(isNaN(v)) { addLog('Ton inválido','fault'); return; }
+    writeParams({ manual_ton: v, run_mode: 1 });
+  });
+
+  // PI params
+  document.getElementById('btn-apply-pi').addEventListener('click', () => {
+    const p = {
+      target_v: getNum('p-target_v'),
+      kp:       getNum('p-kp'),
+      ki:       getNum('p-ki'),
+      ff_scale: getNum('p-ff_scale')
+    };
+    if(Object.values(p).some(isNaN)) { addLog('Valores inválidos','fault'); return; }
+    writeParams(p);
+  });
+
+  // Calibración A0
+  document.getElementById('btn-cal-a0').addEventListener('click', () => {
+    const v = parseFloat(document.getElementById('cal-inp-a0').value);
+    if (isNaN(v) || v < 0.1) { addLog('Voltaje A0 inválido','fault'); return; }
+    writeParams({ cal_real_a0: v });
+    addLog('Calibración A0 enviada: ' + v + ' V', 'cmd');
+  });
+
+  // Calibración A1
+  document.getElementById('btn-cal-a1').addEventListener('click', () => {
+    const v = parseFloat(document.getElementById('cal-inp-a1').value);
+    if (isNaN(v) || v < 0.1) { addLog('Voltaje A1 inválido','fault'); return; }
+    writeParams({ cal_real_a1: v });
+    addLog('Calibración A1 enviada: ' + v + ' V', 'cmd');
+  });
+
+  // Límites PWM
+  document.getElementById('btn-apply-limits').addEventListener('click', () => {
+    const p = {
+      ton_max_us:  getNum('p-ton_max_us'),
+      ton_hard_us: getNum('p-ton_hard_us'),
+      min_off_us:  getNum('p-min_off_us'),
+      slew_up:     getNum('p-slew_up'),
+      slew_down:   getNum('p-slew_down')
+    };
+    if(Object.values(p).some(isNaN)) { addLog('Valores inválidos','fault'); return; }
+    writeParams(p);
+  });
+}
+
+/* Ejecuta el init aunque DOMContentLoaded ya se haya disparado durante el await de auth */
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initControlUI);
+else initControlUI();
+</script>
+</body>
+</html>

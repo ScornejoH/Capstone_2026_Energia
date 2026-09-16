@@ -1,0 +1,8 @@
+const firebaseConfig = {
+    apiKey            : "AIzaSyDwXigQYn1N0nreSYCJ8h0ta63i1mjIWK8",
+    authDomain        : "microred-dc.firebaseapp.com",
+    projectId         : "microred-dc",
+    storageBucket     : "microred-dc.firebasestorage.app",
+    messagingSenderId : "929937213017",
+    appId             : "1:929937213017:web:73d86c234238f151195348"
+};

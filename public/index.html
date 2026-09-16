@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Microrred DC — Supervisión</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<script type="module">
+  import { initializeApp }  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, onValue, update }
+                            from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  import { getAuth, signInAnonymously }
+                            from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey            : "AIzaSyDwXigQYn1N0nreSYCJ8h0ta63i1mjIWK8",
+    authDomain        : "microred-dc.firebaseapp.com",
+    databaseURL       : "https://microred-dc-default-rtdb.firebaseio.com",
+    projectId         : "microred-dc",
+    storageBucket     : "microred-dc.firebasestorage.app",
+    messagingSenderId : "929937213017",
+    appId             : "1:929937213017:web:73d86c234238f151195348"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getDatabase(app);
+
+  /* Escribir comandos a /agenteN/params (run_mode / pv_arm / pv_mode). */
+  window.sendParams = (agent, fields) => update(ref(db, `/agente${agent}/params`), fields);
+
+  const auth = getAuth(app);
+  try { await signInAnonymously(auth); }
+  catch (e) { console.error("[Auth] Falló el inicio de sesión anónimo:", e); }
+
+  /* Valores por agente (uniforme): /agentes/agenteN */
+  onValue(ref(db, "/agentes/agente1"), s => { const d = s.val(); if (d) window.updateAgent(1, d); });
+  onValue(ref(db, "/agentes/agente2"), s => { const d = s.val(); if (d) window.updateAgent(2, d); });
+  onValue(ref(db, "/agentes/agente3"), s => { const d = s.val(); if (d) window.updateAgent(3, d); });
+
+  /* Reporte de conectividad + heartbeat del gateway (lo escribe AG1). Es la
+     fuente autoritativa: AG1 declara qué agentes ve conectados al bus CAN. */
+  onValue(ref(db, "/sistema"),  s => { const d = s.val(); if (d) window.updateSystemReport(d); });
+
+  /* Consenso distribuido del voltaje de bus. */
+  onValue(ref(db, "/consenso"), s => { const d = s.val(); if (d) window.updateConsensus(d); });
+</script>
+
+<style>
+:root {
+  /* ── Paleta A · Grid Ops (SCADA oscuro) ── */
+  --bg:#0e1621; --bg2:#16202e; --bg3:#1c2a3a;
+  --border:rgba(143,163,189,0.14); --border-strong:rgba(143,163,189,0.26);
+  --text:#eef4fb; --muted:#8fa3bd;
+  --teal:#16b399; --red:#e2504a; --amber:#f0a92b; --blue:#3d8ce0;
+  --font-mono:'Space Mono', monospace;
+  --font-ui:'Syne', sans-serif;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:var(--font-ui); background:var(--bg); color:var(--text); min-height:100vh; }
+.shell { max-width:1280px; margin:0 auto; padding:24px 22px 44px; }
+
+header { display:flex; align-items:flex-end; justify-content:space-between; gap:16px;
+  margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.logo { display:flex; align-items:center; gap:14px; }
+.logo-mark { width:34px; height:34px; border:2px solid var(--teal); border-radius:6px;
+  display:flex; align-items:center; justify-content:center; }
+.logo-mark::after { content:''; width:10px; height:10px; background:var(--teal); border-radius:50%;
+  animation:pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+h1 { font-size:18px; font-weight:800; letter-spacing:.04em; }
+h1 span { color:var(--muted); font-weight:400; }
+.header-meta { font-family:var(--font-mono); font-size:11px; color:var(--muted); text-align:right; line-height:1.9; }
+#live-clock { color:var(--amber); }
+.nav { display:flex; gap:8px; margin-top:6px; flex-wrap:wrap; justify-content:flex-end; }
+.nav a { font-family:var(--font-mono); font-size:10px; font-weight:700; text-decoration:none;
+  padding:4px 10px; border-radius:7px; letter-spacing:.05em; color:var(--muted);
+  border:1px solid var(--border); background:var(--bg2); transition:color .2s,border-color .2s; }
+.nav a:hover { color:var(--text); border-color:var(--border-strong); }
+
+/* ── Barra de control ── */
+.control-bar { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:22px; }
+.ctl-btn { font-family:var(--font-ui); font-weight:600; font-size:13px; letter-spacing:.02em;
+  padding:16px 14px; border-radius:12px; cursor:pointer; text-align:left;
+  border:1px solid var(--border); background:var(--bg2); color:var(--text);
+  display:flex; flex-direction:column; gap:6px; transition:all .25s; }
+.ctl-btn:hover { border-color:var(--border-strong); transform:translateY(-1px); }
+.ctl-btn:active { transform:translateY(0); }
+.ctl-btn:disabled { opacity:.45; cursor:not-allowed; transform:none; }
+.ctl-btn .ctl-sub { font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+.ctl-btn .ctl-state { font-family:var(--font-mono); font-size:11px; font-weight:700; letter-spacing:.06em; }
+.ctl-btn.on  { border-color:rgba(22,179,153,.42); background:rgba(22,179,153,.09); }
+.ctl-btn.on  .ctl-state { color:var(--teal); }
+.ctl-btn.off .ctl-state { color:var(--muted); }
+.ctl-btn.mppt.on { border-color:rgba(240,169,43,.42); background:rgba(240,169,43,.09); }
+.ctl-btn.mppt.on .ctl-state { color:var(--amber); }
+
+/* ── Fila superior: consenso SOC + fallas ── */
+.top-row { display:grid; grid-template-columns:1fr 1.4fr; gap:14px; margin-bottom:22px; }
+.panel { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:18px; }
+.panel h3 { font-size:10px; color:var(--muted); letter-spacing:.16em; text-transform:uppercase; margin-bottom:14px; }
+
+.soc-consensus { display:flex; align-items:center; gap:20px; }
+.soc-ring { position:relative; width:120px; height:120px; flex-shrink:0; }
+.soc-ring svg { transform:rotate(-90deg); }
+.soc-ring .ring-val { position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; }
+.soc-ring .ring-num { font-family:var(--font-mono); font-size:26px; font-weight:700; color:var(--teal); line-height:1; }
+.soc-ring .ring-lbl { font-size:9px; color:var(--muted); letter-spacing:.12em; text-transform:uppercase; margin-top:3px; }
+.soc-meta { flex:1; }
+.soc-meta .row { display:flex; justify-content:space-between; font-family:var(--font-mono);
+  font-size:12px; padding:5px 0; border-bottom:1px solid var(--border); }
+.soc-meta .row:last-child { border-bottom:none; }
+.soc-meta .row .k { color:var(--muted); }
+.soc-chips { display:flex; gap:6px; margin-top:8px; }
+.soc-chip { flex:1; text-align:center; font-family:var(--font-mono); font-size:11px; padding:6px 4px;
+  border-radius:7px; background:var(--bg3); border:1px solid var(--border); }
+.soc-chip .cn { font-size:9px; color:var(--muted); display:block; }
+
+.fault-list { display:flex; flex-direction:column; gap:8px; max-height:210px; overflow-y:auto; }
+.fault-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:9px;
+  font-size:12px; font-family:var(--font-mono); }
+.fault-item.err  { background:rgba(226,80,74,.10);  border:1px solid rgba(226,80,74,.30);  color:#f2a9a5; }
+.fault-item.warn { background:rgba(240,169,43,.10); border:1px solid rgba(240,169,43,.28); color:#f6cd86; }
+.fault-item.ok   { background:rgba(22,179,153,.09); border:1px solid rgba(22,179,153,.24); color:#7fe0cc; }
+.fault-item .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.fault-item.err .dot  { background:var(--red);   box-shadow:0 0 6px var(--red); }
+.fault-item.warn .dot { background:var(--amber); }
+.fault-item.ok .dot   { background:var(--teal); }
+
+/* ── Cards de agentes ── */
+.agents-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:14px; margin-bottom:22px; }
+.agent-card { background:var(--bg2); border:1px solid var(--border); border-radius:14px; overflow:hidden; transition:border-color .3s,opacity .3s; }
+.agent-card.offline { opacity:.55; border-color:rgba(226,80,74,.30); }
+.agent-card-header { display:flex; align-items:center; justify-content:space-between;
+  padding:13px 16px; border-bottom:1px solid var(--border); background:var(--bg3); }
+.agent-name { font-size:13px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
+.agent-id { font-family:var(--font-mono); font-size:10px; color:var(--muted); }
+.pills { display:flex; gap:6px; align-items:center; }
+.pill { font-family:var(--font-mono); font-size:9px; font-weight:700; padding:3px 8px; border-radius:20px;
+  letter-spacing:.08em; text-transform:uppercase; transition:all .3s; }
+.pill-on   { background:rgba(22,179,153,.13); color:var(--teal); border:1px solid rgba(22,179,153,.26); }
+.pill-off  { background:rgba(143,163,189,.10); color:var(--muted); border:1px solid var(--border); }
+.pill-boost{ background:rgba(22,179,153,.11); color:var(--teal); border:1px solid rgba(22,179,153,.24); }
+.pill-buck { background:rgba(61,140,224,.12); color:var(--blue); border:1px solid rgba(61,140,224,.26); }
+.pill-fault{ background:rgba(226,80,74,.15); color:var(--red); border:1px solid rgba(226,80,74,.36); }
+.agent-body { padding:15px 16px 16px; }
+.metrics-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+.metric-block { background:var(--bg3); border-radius:8px; padding:11px 13px; }
+.metric-block .m-label { font-size:9px; color:var(--muted); letter-spacing:.14em; text-transform:uppercase; margin-bottom:5px; }
+.metric-block .m-value { font-family:var(--font-mono); font-size:19px; font-weight:700; line-height:1; }
+.metric-block .m-unit { font-size:11px; color:var(--muted); margin-left:2px; }
+
+.soc-section { margin-bottom:12px; }
+.soc-head { display:flex; justify-content:space-between; font-size:9px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+.soc-head span { font-family:var(--font-mono); color:var(--text); }
+.soc-track { height:7px; background:rgba(255,255,255,.06); border-radius:4px; overflow:hidden; }
+.soc-fill { height:100%; border-radius:4px; transition:width .6s cubic-bezier(.4,0,.2,1),background .4s; }
+
+.cell-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:12px; }
+.cell-block { background:var(--bg3); border-radius:8px; padding:8px 10px; text-align:center; }
+.cell-lbl { font-size:8px; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; margin-bottom:4px; }
+.cell-val { font-family:var(--font-mono); font-size:14px; font-weight:700; }
+.cell-u { font-size:9px; color:var(--muted); margin-left:2px; }
+.energy-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+.energy-block { border:1px solid var(--border); border-radius:8px; padding:9px 13px; }
+.energy-block .e-label { font-size:9px; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; margin-bottom:4px; }
+.energy-block .e-value { font-family:var(--font-mono); font-size:15px; font-weight:700; }
+.energy-block .e-value small { font-size:9px; color:var(--muted); font-weight:400; }
+.energy-block.delivered .e-value { color:var(--teal); }
+.energy-block.absorbed  .e-value { color:var(--red); }
+.mini-chart-wrap { position:relative; height:46px; }
+
+footer { border-top:1px solid var(--border); padding-top:14px; display:flex; justify-content:space-between;
+  align-items:center; font-family:var(--font-mono); font-size:10px; color:var(--muted); flex-wrap:wrap; gap:8px; }
+.conn-dot { width:6px; height:6px; border-radius:50%; background:#555; display:inline-block; margin-right:6px; }
+
+@media(max-width:900px){ .top-row{grid-template-columns:1fr;} .control-bar{grid-template-columns:1fr 1fr;} }
+@media(max-width:560px){ .control-bar{grid-template-columns:1fr;} .agents-grid{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <header>
+    <div class="logo">
+      <div class="logo-mark"></div>
+      <div>
+        <h1>Microrred DC <span>/ Supervisión</span></h1>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:2px">3 agentes · bus DC compartido</div>
+      </div>
+    </div>
+    <div class="header-meta">
+      <div id="live-clock">--:--:--</div>
+      <div id="conn-status" style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+        <span id="device-dot" style="width:8px;height:8px;border-radius:50%;background:#555;flex-shrink:0;transition:background .4s"></span>
+        <span id="device-label">Esperando…</span>
+      </div>
+      <div class="nav">
+        <a href="/corriente.html">CORRIENTE</a>
+        <a href="/control.html">CONVERSOR</a>
+        <a href="/control_can.html">MULTI-AGENTE</a>
+        <a href="/Configuracion_Agente_3.html">CONFIG AG3</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── 4 botones de control ── -->
+  <div class="control-bar">
+    <button class="ctl-btn off" id="btn-ctl-1">
+      <span class="ctl-sub">Control · Agente 1</span>
+      <span class="ctl-state" id="st-ctl-1">Activar</span>
+    </button>
+    <button class="ctl-btn off" id="btn-ctl-2">
+      <span class="ctl-sub">Control · Agente 2</span>
+      <span class="ctl-state" id="st-ctl-2">Activar</span>
+    </button>
+    <button class="ctl-btn off" id="btn-ctl-3">
+      <span class="ctl-sub">Control · Agente 3</span>
+      <span class="ctl-state" id="st-ctl-3">Activar</span>
+    </button>
+    <button class="ctl-btn mppt off" id="btn-mppt-3">
+      <span class="ctl-sub">MPPT · Agente 3</span>
+      <span class="ctl-state" id="st-mppt-3">Activar</span>
+    </button>
+  </div>
+
+  <!-- ── Consenso SOC + Fallas ── -->
+  <div class="top-row">
+    <div class="panel">
+      <h3>Consenso de SOC · sistema</h3>
+      <div class="soc-consensus">
+        <div class="soc-ring">
+          <svg width="120" height="120" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="10"/>
+            <circle id="soc-ring-fg" cx="60" cy="60" r="52" fill="none" stroke="var(--teal)" stroke-width="10"
+              stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"
+              style="transition:stroke-dashoffset .7s cubic-bezier(.4,0,.2,1),stroke .4s"/>
+          </svg>
+          <div class="ring-val">
+            <div class="ring-num" id="sys-soc-num">—<span style="font-size:14px">%</span></div>
+            <div class="ring-lbl">SOC red</div>
+          </div>
+        </div>
+        <div class="soc-meta">
+          <div class="row"><span class="k">Agentes en línea</span><span id="sys-soc-n">—</span></div>
+          <div class="row"><span class="k">Dispersión (máx−mín)</span><span id="sys-soc-spread">—</span></div>
+          <div class="row"><span class="k">V bus (consenso)</span><span id="sys-vbus">—</span></div>
+          <div class="soc-chips" id="soc-chips"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Mensajes de error · 3 agentes</h3>
+      <div class="fault-list" id="fault-list">
+        <div class="fault-item ok"><span class="dot"></span>Esperando telemetría…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Cards por agente ── -->
+  <div class="agents-grid" id="agents-grid"></div>
+
+  <footer>
+    <div><span class="conn-dot" id="foot-dot"></span><span id="foot-conn">Firebase Realtime Database</span></div>
+    <div id="last-update">—</div>
+    <div>Conexión reportada por Agente 1 (gateway) · metering medido en firmware</div>
+  </footer>
+</div>
+
+<script>
+/* ═══════════ CONSTANTES / ESTADO ═══════════ */
+const AGENTS = [1,2,3];
+const COLORS = { 1:'#16b399', 2:'#3d8ce0', 3:'#f0a92b' };   // identidad por agente
+const BB_FAULT = {1:'Bus sobre-voltaje',2:'Bus sub-voltaje',3:'Sobre-corriente',
+                  4:'Sensor ADS desconectado',5:'Batería 2S alta',6:'Batería 2S baja'};
+const PV_FAULT = {4:'Sensor ADS2 (PV)', 7:'Protección PV',
+                  0x11:'Batería 2S alta', 0x12:'VPV colapsado (panel)',
+                  0x13:'Corriente panel alta', 0x14:'Corriente carga batería alta',
+                  0x15:'Corriente panel reversa/signo', 0x16:'Potencia panel alta'};
+const PVMODE   = ['OFF','SENSORS','FIJO','VPV_PI','MPPT'];
+
+/* Peso relativo de cada agente en el SOC del sistema, proporcional a su
+   CAPACIDAD (Ah), no a su cantidad de celdas. Asume celdas idénticas:
+   - AG1/AG2: 2 celdas en PARALELO → 2× capacidad de una celda, mismo voltaje.
+   - AG3:     2 celdas en SERIE    → 1× capacidad de una celda, 2× voltaje.
+   El SOC es una fracción de carga, así que el promedio del sistema debe
+   ponderar por capacidad (Ah) — un pack de más Ah pesa más en el total. */
+const SOC_WEIGHT = { 1: 2, 2: 2, 3: 1 };
+const OFFLINE_MS = 20000;               // sin heartbeat del gateway durante este tiempo ⇒ gateway caído
+                                        // (holgado: la telemetría por WiFi/Firebase llega a ráfagas y con latencia)
+const MAX_PTS  = 40;
+const RING_C   = 2 * Math.PI * 52;
+
+const state = {};
+AGENTS.forEach(n => state[n] = {
+  v_bat:0, v_bus:0, i_out:0, soc:0, power:0, topology:'',
+  running:false, fault:false, fault_code:0, busDisc:false,
+  pv_fault:false, pv_fault_code:0, pv_armed:false, pv_mode:0, v_mid:0,
+  online:false, reportedOnline:false, lastSeen:0, age:-1, seen:false,
+  e_deliv:0, e_absorb:0, spark:[]
+});
+
+/* Estado del gateway (AG1): heartbeat + reporte de conectividad de la red. */
+const gw = { hb:-1, lastSeen:0, offline:'', hasReport:false };
+
+/* Consenso de bus (opción B) publicado por AG1. */
+const cons = { v:null, spread:null, n:0, fresh:false };
+
+/* ═══════════ UTILIDADES ═══════════ */
+function num(x, def) { const v = parseFloat(x); return isFinite(v) ? v : (def ?? 0); }
+function isTrue(x) { return x === true || String(x).toLowerCase() === 'true'; }
+function setText(id, html) { const e = document.getElementById(id); if (e) e.innerHTML = html; }
+function hexRgb(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)].join(','); }
+function hexAlpha(h,a){ return `rgba(${hexRgb(h)},${a})`; }
+function socFromVoltage(v) {
+  const c=[[3.00,0],[3.20,.05],[3.50,.15],[3.70,.35],[3.80,.50],[3.90,.65],[4.00,.78],[4.10,.90],[4.20,1]];
+  if (v<=c[0][0]) return 0; if (v>=c[c.length-1][0]) return 1;
+  for (let i=1;i<c.length;i++) if (v<=c[i][0]) { const [v0,s0]=c[i-1],[v1,s1]=c[i]; return s0+(s1-s0)*(v-v0)/(v1-v0); }
+  return 0;
+}
+function socColor(s){ return s<0.20?'#e2504a':s<0.50?'#f0a92b':'#16b399'; }
+function ageText(a){ return (a==null||a<0) ? 'sin registro' : (a<1 ? 'ahora' : `hace ${a}s`); }
+
+/* Vida del gateway: última vez que llegó un heartbeat de AG1 (o su telemetría). */
+function gatewayLastSeen(){ return Math.max(state[1].lastSeen, gw.lastSeen); }
+function gatewayStale(){ const t = gatewayLastSeen(); return !t || (Date.now() - t > OFFLINE_MS); }
+
+/* Recalcula online por agente: si el gateway está caído, nada es confiable.
+   Si está vivo, AG1 está en línea y AG2/AG3 valen lo que AG1 reporta por CAN. */
+function recomputeOnline(){
+  const gwDown = gatewayStale();
+  AGENTS.forEach(n => {
+    if (gwDown)      state[n].online = false;
+    else if (n===1)  state[n].online = true;
+    else             state[n].online = state[n].reportedOnline === true;
+  });
+}
+
+/* ═══════════ CARDS ═══════════ */
+function buildCards() {
+  const grid = document.getElementById('agents-grid');
+  grid.innerHTML = '';
+  AGENTS.forEach(n => {
+    const c = COLORS[n];
+    const isAg3 = n === 3;
+    grid.innerHTML += `
+    <div class="agent-card" id="card-${n}">
+      <div class="agent-card-header" style="border-bottom-color:rgba(${hexRgb(c)},.18)">
+        <div>
+          <div class="agent-name" style="color:${c}">Agente ${n}</div>
+          <div class="agent-id" id="agid-${n}">AGT-00${n}${isAg3?' · 2S + PV':' · buck-boost'}</div>
+        </div>
+        <div class="pills">
+          <span class="pill pill-off" id="pill-topo-${n}">—</span>
+          <span class="pill pill-off" id="pill-run-${n}">OFF</span>
+        </div>
+      </div>
+      <div class="agent-body">
+        <div class="metrics-row">
+          <div class="metric-block">
+            <div class="m-label">V ${isAg3?'batería 2S':'batería'}</div>
+            <div class="m-value" id="vbat-${n}">—<span class="m-unit">V</span></div>
+          </div>
+          <div class="metric-block">
+            <div class="m-label">I salida</div>
+            <div class="m-value" id="iout-${n}">—<span class="m-unit">A</span></div>
+          </div>
+        </div>
+        <div class="soc-section">
+          <div class="soc-head">Estado de carga (SOC) <span id="soc-pct-${n}">—%</span></div>
+          <div class="soc-track"><div class="soc-fill" id="soc-fill-${n}" style="width:0%;background:${c}"></div></div>
+        </div>
+        ${isAg3 ? `
+        <div class="cell-row">
+          <div class="cell-block"><div class="cell-lbl">Celda 1 (inf)</div><div class="cell-val" id="cell1-3">—<span class="cell-u">V</span></div></div>
+          <div class="cell-block"><div class="cell-lbl">Celda 2 (sup)</div><div class="cell-val" id="cell2-3">—<span class="cell-u">V</span></div></div>
+          <div class="cell-block"><div class="cell-lbl">Desbalance</div><div class="cell-val" id="cellbal-3">—<span class="cell-u">mV</span></div></div>
+        </div>` : ''}
+        <div class="energy-row">
+          <div class="energy-block delivered">
+            <div class="e-label">↑ Energía entregada</div>
+            <div class="e-value" id="e-deliv-${n}">0.000 <small>Wh</small></div>
+          </div>
+          <div class="energy-block absorbed">
+            <div class="e-label">↓ Energía absorbida</div>
+            <div class="e-value" id="e-absorb-${n}">0.000 <small>Wh</small></div>
+          </div>
+        </div>
+        <div class="mini-chart-wrap"><canvas id="spark-${n}"></canvas></div>
+      </div>
+    </div>`;
+  });
+}
+
+/* ═══════════ ACTUALIZAR AGENTE (valores) ═══════════ */
+window.updateAgent = function(n, d) {
+  const s = state[n];
+  const now = Date.now();
+
+  s.v_bat = num(d.v_bat, s.v_bat);
+  s.v_bus = num(d.v_bus, s.v_bus);
+  s.i_out = num(d.i_out, s.i_out);
+  s.soc   = (d.soc != null && isFinite(parseFloat(d.soc))) ? parseFloat(d.soc) : socFromVoltage(s.v_bat);
+  s.power = s.v_bus * s.i_out;
+  s.running    = String(d.run_mode).toUpperCase() === 'ON';
+  if (d.topology != null) s.topology = String(d.topology).toUpperCase();
+  s.busDisc    = isTrue(d.bus_disc);
+  s.fault      = isTrue(d.fault);
+  s.fault_code = parseInt(d.fault_code) || 0;
+  if (n === 3) {
+    s.pv_fault      = isTrue(d.pv_fault);
+    s.pv_fault_code = parseInt(d.pv_fault_code) || 0;
+    s.pv_armed      = isTrue(d.pv_armed);
+    s.pv_mode       = parseInt(d.pv_mode) || 0;
+    s.v_mid         = num(d.v_mid, s.v_mid);
+  }
+  s.seen = true;
+  s.lastSeen = now;
+  if (d.age != null) s.age = num(d.age, s.age);
+  /* Conectividad: AG1 es local (siempre en línea si publica); AG2/AG3 valen
+     lo que reporta el campo online (calculado por AG1 según recepción CAN). */
+  if (n === 1) { s.reportedOnline = true; gw.lastSeen = now; }
+  else         { s.reportedOnline = isTrue(d.online); }
+
+  /* Metering REAL: energía acumulada medida en el firmware de cada agente (Wh). */
+  s.e_deliv  = num(d.e_deliv,  s.e_deliv);
+  s.e_absorb = num(d.e_absorb, s.e_absorb);
+
+  s.spark.push(s.i_out);
+  if (s.spark.length > MAX_PTS) s.spark.shift();
+
+  recomputeOnline();
+  renderAgent(n);
+  updateSystem();
+  updateFaults();
+  updateButtons();
+  updateConn();
+  setText('last-update', 'Últ. actualización: ' + new Date().toLocaleTimeString('es-CL'));
+};
+
+/* ═══════════ REPORTE DEL GATEWAY (AG1) ═══════════ */
+window.updateSystemReport = function(d) {
+  const now = Date.now();
+  const hb = parseInt(d.hb);
+  if (isFinite(hb)) { if (hb !== gw.hb) gw.lastSeen = now; gw.hb = hb; }
+  else gw.lastSeen = now;
+  gw.offline   = (d.offline != null) ? String(d.offline) : '';
+  gw.hasReport = true;
+
+  /* AG1 es la fuente autoritativa de conectividad de AG2/AG3. */
+  [2,3].forEach(n => {
+    const a = d['agente'+n];
+    if (a && a.online != null) {
+      state[n].reportedOnline = isTrue(a.online);
+      if (a.age != null) state[n].age = num(a.age, state[n].age);
+    }
+  });
+
+  recomputeOnline();
+  AGENTS.forEach(renderAgent);
+  updateSystem(); updateFaults(); updateButtons(); updateConn();
+};
+
+/* ═══════════ CONSENSO DE BUS (opción B) ═══════════ */
+window.updateConsensus = function(d) {
+  cons.v      = (d.v != null) ? num(d.v, null) : null;
+  cons.spread = (d.spread != null) ? num(d.spread, null) : null;
+  cons.n      = parseInt(d.n) || 0;
+  cons.fresh  = true;
+  updateSystem();
+};
+
+function renderAgent(n) {
+  const s = state[n];
+  const card = document.getElementById(`card-${n}`);
+  if (card) card.classList.toggle('offline', !s.online);
+
+  const iCol = !s.online ? 'var(--muted)' : (s.i_out >= 0 ? 'var(--teal)' : 'var(--red)');
+  setText(`vbat-${n}`, s.v_bat.toFixed(3) + '<span class="m-unit">V</span>');
+  setText(`iout-${n}`, (s.i_out>=0?'+':'') + s.i_out.toFixed(3) + '<span class="m-unit">A</span>');
+  const iv = document.getElementById(`iout-${n}`); if (iv) iv.style.color = iCol;
+  setText(`soc-pct-${n}`, (s.soc*100).toFixed(1) + '%');
+  const fill = document.getElementById(`soc-fill-${n}`);
+  if (fill) { fill.style.width = (s.soc*100).toFixed(1)+'%'; fill.style.background = socColor(s.soc); }
+  setText(`e-deliv-${n}`,  s.e_deliv.toFixed(3)  + ' <small>Wh</small>');
+  setText(`e-absorb-${n}`, s.e_absorb.toFixed(3) + ' <small>Wh</small>');
+
+  /* AG3: balance de celdas 2S desde el punto medio medido (A2 spare). */
+  if (n === 3 && document.getElementById('cell1-3')) {
+    if (s.online && s.v_mid > 0.1) {
+      const c1 = s.v_mid;                 // celda 1 (inferior) = punto medio
+      const c2 = s.v_bat - s.v_mid;       // celda 2 (superior) = total − medio
+      const dmv = (c2 - c1) * 1000;       // desbalance (mV)
+      const bal = Math.abs(dmv);
+      const col = bal < 50 ? 'var(--teal)' : bal < 150 ? 'var(--amber)' : 'var(--red)';
+      setText('cell1-3', c1.toFixed(3) + '<span class="cell-u">V</span>');
+      setText('cell2-3', c2.toFixed(3) + '<span class="cell-u">V</span>');
+      const cb = document.getElementById('cellbal-3');
+      if (cb) { cb.innerHTML = (dmv>=0?'+':'') + dmv.toFixed(0) + '<span class="cell-u">mV</span>'; cb.style.color = col; }
+    } else {
+      setText('cell1-3', '—'); setText('cell2-3', '—');
+      const cb = document.getElementById('cellbal-3'); if (cb) { cb.innerHTML = '—'; cb.style.color = 'var(--muted)'; }
+    }
+  }
+
+  /* Sub-título: identidad + frescura cuando está offline. */
+  const idEl = document.getElementById(`agid-${n}`);
+  if (idEl) {
+    const base = 'AGT-00'+n + (n===3?' · 2S + PV':' · buck-boost');
+    idEl.textContent = s.online ? base : `${base} · ${ageText(s.age)}`;
+    idEl.style.color = s.online ? '' : 'var(--red)';
+  }
+
+  /* Pills de estado */
+  const run = document.getElementById(`pill-run-${n}`);
+  if (run) {
+    if (!s.online)      { run.textContent='SIN CONEXIÓN'; run.className='pill pill-fault'; }
+    else if (s.busDisc) { run.textContent='DESC. BUS'; run.className='pill pill-fault'; }
+    else if (s.fault || (n===3 && s.pv_fault)) { run.textContent='FALLA'; run.className='pill pill-fault'; }
+    else                { run.textContent = s.running?'ON':'OFF'; run.className = 'pill ' + (s.running?'pill-on':'pill-off'); }
+  }
+  const topo = document.getElementById(`pill-topo-${n}`);
+  if (topo) {
+    /* Topología REAL reportada por el firmware (cada agente la calcula bien).
+       No inferir del signo de corriente: AG3 tiene batería 2S (>bus) y al
+       entregar hace BUCK, al revés que AG1/AG2 (1S, boost para entregar). */
+    if (!s.online || !s.topology) { topo.textContent='—'; topo.className='pill pill-off'; }
+    else { const boost = s.topology === 'BOOST'; topo.textContent = boost?'BOOST':'BUCK'; topo.className='pill '+(boost?'pill-boost':'pill-buck'); }
+  }
+  updateSpark(n);
+}
+
+/* ═══════════ CONSENSO SOC DEL SISTEMA ═══════════ */
+function updateSystem() {
+  const on = AGENTS.filter(n => state[n].online);
+  const socs = on.map(n => state[n].soc);
+  /* Promedio ponderado por capacidad (Ah), no aritmético simple: un pack en
+     paralelo (AG1/AG2, 2× capacidad) debe pesar el doble que uno en serie
+     (AG3, 1× capacidad) al calcular el SOC del sistema. */
+  const wSum = on.reduce((a,n) => a + SOC_WEIGHT[n], 0);
+  const avg  = wSum ? on.reduce((a,n) => a + state[n].soc * SOC_WEIGHT[n], 0) / wSum : 0;
+  const spread = socs.length ? (Math.max(...socs)-Math.min(...socs)) : 0;
+
+  /* V bus: preferir el consenso distribuido publicado por AG1; si no, promedio local. */
+  let vShown = null;
+  if (cons.fresh && cons.v != null && cons.n > 0) vShown = cons.v;
+  else {
+    const vbus = on.map(n=>state[n].v_bus).filter(v=>v>0.1);
+    vShown = vbus.length ? vbus.reduce((a,b)=>a+b,0)/vbus.length : null;
+  }
+
+  setText('sys-soc-num', (avg*100).toFixed(1) + '<span style="font-size:14px">%</span>');
+  setText('sys-soc-n', on.length + ' / 3');
+  setText('sys-soc-spread', (spread*100).toFixed(1) + ' %');
+  setText('sys-vbus', vShown != null ? vShown.toFixed(3)+' V' : '—');
+
+  const ring = document.getElementById('soc-ring-fg');
+  if (ring) { ring.style.strokeDashoffset = (RING_C * (1 - avg)).toFixed(1); ring.style.stroke = socColor(avg); }
+  document.querySelector('.ring-num').style.color = on.length ? socColor(avg) : 'var(--muted)';
+
+  const chips = document.getElementById('soc-chips');
+  chips.innerHTML = AGENTS.map(n => {
+    const s = state[n];
+    const val = s.online ? (s.soc*100).toFixed(0)+'%' : '—';
+    const col = s.online ? socColor(s.soc) : 'var(--muted)';
+    return `<div class="soc-chip"><span class="cn" style="color:${COLORS[n]}">AG${n} ·${SOC_WEIGHT[n]}x</span><span style="color:${col}">${val}</span></div>`;
+  }).join('');
+}
+
+/* ═══════════ PANEL DE FALLAS / DESCONEXIÓN ═══════════ */
+function updateFaults() {
+  const items = [];
+  const gwDown = gatewayStale();
+
+  if (gwDown) {
+    /* Si nunca ha llegado nada, es "esperando"; si llegó y se cortó, es caída. */
+    if (state[1].seen || gw.hasReport)
+      items.push({lvl:'err', msg:'Gateway (Agente 1) sin conexión · sin telemetría de la red'});
+  } else {
+    AGENTS.forEach(n => {
+      const s = state[n];
+      if (!s.online) {
+        /* AG1 (gateway) reporta este agente como desconectado del bus CAN. */
+        items.push({lvl:'warn', msg:`Agente ${n} · desconectado del bus CAN — reportado por AG1 (${ageText(s.age)})`});
+        return;
+      }
+      if (s.busDisc)           items.push({lvl:'err', msg:`Agente ${n} · desconectado del bus (voltaje no coincide con la red)`});
+      if (s.fault)             items.push({lvl:'err', msg:`Agente ${n} · ${BB_FAULT[s.fault_code] || ('código '+s.fault_code)}`});
+      if (n===3 && s.pv_fault) items.push({lvl:'err', msg:`Agente 3 · PV · ${PV_FAULT[s.pv_fault_code] || ('código '+s.pv_fault_code)}`});
+    });
+  }
+
+  const list = document.getElementById('fault-list');
+  if (!items.length) {
+    const anySeen = AGENTS.some(n=>state[n].seen);
+    list.innerHTML = anySeen
+      ? '<div class="fault-item ok"><span class="dot"></span>Sistema sin fallas · 3 agentes en línea</div>'
+      : '<div class="fault-item ok"><span class="dot"></span>Esperando telemetría…</div>';
+    return;
+  }
+  list.innerHTML = items.map(it => `<div class="fault-item ${it.lvl}"><span class="dot"></span>${it.msg}</div>`).join('');
+}
+
+/* ═══════════ BOTONES DE CONTROL ═══════════ */
+function updateButtons() {
+  AGENTS.forEach(n => {
+    const s = state[n], btn = document.getElementById(`btn-ctl-${n}`);
+    if (!btn) return;
+    btn.disabled = !s.online;
+    btn.classList.toggle('on', s.online && s.running);
+    btn.classList.toggle('off', !(s.online && s.running));
+    setText(`st-ctl-${n}`, !s.online ? 'Sin conexión' : (s.running ? 'Activo · desactivar' : 'Activar'));
+  });
+  const s3 = state[3], mppt = document.getElementById('btn-mppt-3');
+  const active = s3.online && s3.pv_armed && s3.pv_mode === 4;
+  mppt.disabled = !s3.online;
+  mppt.classList.toggle('on', active);
+  mppt.classList.toggle('off', !active);
+  setText('st-mppt-3', !s3.online ? 'Sin conexión'
+    : (active ? 'Armado · desarmar' : (s3.pv_armed ? 'PV:'+(PVMODE[s3.pv_mode]||'?') : 'Activar')));
+}
+
+function toggleControl(n) {
+  if (!window.sendParams || !state[n].online) return;
+  window.sendParams(n, { run_mode: state[n].running ? 0 : 1 }).catch(e => console.error(e));
+}
+function toggleMppt() {
+  if (!window.sendParams || !state[3].online) return;
+  const active = state[3].pv_armed && state[3].pv_mode === 4;
+  const cmd = active ? { pv_arm: 0 } : { pv_mode: 4, pv_arm: 1 };
+  window.sendParams(3, cmd).catch(e => console.error(e));
+}
+
+/* ═══════════ SPARKLINES ═══════════ */
+const sparks = {};
+function initSparks() {
+  AGENTS.forEach(n => {
+    const ctx = document.getElementById(`spark-${n}`);
+    if (!ctx) return;
+    sparks[n] = new Chart(ctx, {
+      type:'line',
+      data:{ labels:Array(MAX_PTS).fill(''), datasets:[{ data:Array(MAX_PTS).fill(null),
+        borderColor:COLORS[n], borderWidth:1.5, pointRadius:0, fill:true,
+        backgroundColor:hexAlpha(COLORS[n],.08), tension:.4 }] },
+      options:{ animation:false, responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}}, scales:{x:{display:false},y:{display:false}} }
+    });
+  });
+}
+function updateSpark(n) {
+  if (!sparks[n]) return;
+  const arr = [...state[n].spark];
+  while (arr.length < MAX_PTS) arr.unshift(null);
+  sparks[n].data.datasets[0].data = arr;
+  sparks[n].update('none');
+}
+
+/* ═══════════ CONEXIÓN / OFFLINE ═══════════ */
+function updateConn() {
+  const prev = AGENTS.map(n => state[n].online);
+  recomputeOnline();
+  let changed = false;
+  AGENTS.forEach((n,i) => { if (state[n].online !== prev[i]) { renderAgent(n); changed = true; } });
+  if (changed) { updateSystem(); updateFaults(); updateButtons(); }
+
+  const gwDown = gatewayStale();
+  const onCount = AGENTS.filter(n => state[n].online).length;
+  const dot = document.getElementById('device-dot'), lbl = document.getElementById('device-label');
+  const fdot = document.getElementById('foot-dot'), fconn = document.getElementById('foot-conn');
+  if (gwDown) {
+    dot.style.background='#e2504a'; dot.style.boxShadow='none'; lbl.style.color='#e2504a'; lbl.textContent='Gateway sin conexión';
+    fdot.style.background='#e2504a'; fconn.textContent='Agente 1 (gateway) sin telemetría';
+  } else {
+    dot.style.background='#16b399'; dot.style.boxShadow='0 0 6px #16b399'; lbl.style.color='#16b399';
+    lbl.textContent = `En línea · ${onCount}/3`;
+    fdot.style.background='#16b399';
+    fconn.textContent = gw.offline ? `AG1 reporta desconectado(s): ${gw.offline}` : 'Firebase · recibiendo telemetría';
+  }
+}
+
+/* ═══════════ INIT ═══════════ */
+buildCards();
+initSparks();
+recomputeOnline();
+AGENTS.forEach(n => { renderAgent(n); });
+updateSystem();
+updateFaults();
+updateButtons();
+
+document.getElementById('btn-ctl-1').onclick = () => toggleControl(1);
+document.getElementById('btn-ctl-2').onclick = () => toggleControl(2);
+document.getElementById('btn-ctl-3').onclick = () => toggleControl(3);
+document.getElementById('btn-mppt-3').onclick = () => toggleMppt();
+
+setInterval(() => {
+  document.getElementById('live-clock').textContent = new Date().toLocaleTimeString('es-CL');
+  updateConn();
+}, 1000);
+</script>
+</body>
+</html>

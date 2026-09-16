@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control Corriente — Agente 1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<style>
+:root {
+  --bg:#0e1621; --bg2:#16202e; --bg3:#1c2a3a;
+  --border:rgba(143,163,189,0.14);
+  --text:#eef4fb; --muted:#8fa3bd;
+  --green:#16b399; --red:#e2504a; --amber:#f0a92b; --blue:#3d8ce0; --purple:#7b6fff;
+  --font-mono:'Space Mono',monospace;
+  --font-ui:'Syne',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font-ui);background:var(--bg);color:var(--text);min-height:100vh;}
+.shell{max-width:1240px;margin:0 auto;padding:24px 20px 48px;}
+
+header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.logo{display:flex;align-items:center;gap:14px;}
+.logo-mark{width:34px;height:34px;border:2px solid var(--purple);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+h1{font-size:18px;font-weight:800;letter-spacing:.04em;}
+h1 span{color:var(--muted);font-weight:400;}
+.nav-link{font-family:var(--font-mono);font-size:11px;color:var(--muted);text-decoration:none;padding:6px 12px;border:1px solid var(--border);border-radius:6px;transition:border-color .2s,color .2s;}
+.nav-link:hover{border-color:var(--green);color:var(--green);}
+.fb-badge{font-family:var(--font-mono);font-size:10px;padding:4px 10px;border-radius:6px;background:rgba(255,167,38,.08);border:1px solid rgba(255,167,38,.25);color:#ffa726;letter-spacing:.06em;}
+
+#fault-banner{display:none;background:rgba(226,80,74,.1);border:1px solid rgba(226,80,74,.35);border-radius:10px;padding:12px 18px;margin-bottom:16px;gap:12px;font-family:var(--font-mono);font-size:12px;color:var(--red);align-items:center;justify-content:space-between;}
+.hw-banner{display:none;border-radius:10px;padding:12px 18px;margin-bottom:12px;font-family:var(--font-mono);font-size:12px;align-items:center;gap:10px;}
+.hw-warn    {background:rgba(240,169,43,.10);border:1px solid rgba(240,169,43,.35);color:var(--amber);}
+.hw-error   {background:rgba(226,80,74,.10); border:1px solid rgba(226,80,74,.35); color:var(--red);}
+.hw-critical{background:rgba(226,80,74,.18); border:2px solid var(--red);           color:var(--red);animation:blink-border 1s ease-in-out infinite;}
+@keyframes blink-border{0%,100%{border-color:var(--red)}50%{border-color:rgba(226,80,74,.2)}}
+
+.status-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px;}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+.stat-card .s-label{font-size:9px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
+.stat-card .s-value{font-family:var(--font-mono);font-size:22px;font-weight:700;line-height:1;}
+.stat-card .s-unit{font-size:11px;color:var(--muted);margin-left:2px;}
+.col-green{color:var(--green);}.col-amber{color:var(--amber);}.col-blue{color:var(--blue);}.col-purple{color:var(--purple);}
+
+/* SoC bar */
+.soc-bar-wrap{margin-top:6px;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden;}
+.soc-bar-fill{height:100%;border-radius:2px;transition:width .5s,background .5s;}
+
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;}
+@media(max-width:700px){.charts-row{grid-template-columns:1fr;}}
+.chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;}
+.chart-card canvas{height:160px!important;}
+.chart-label{font-family:var(--font-mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+
+.control-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;}
+@media(max-width:700px){.control-grid{grid-template-columns:1fr;}}
+.ctrl-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;}
+.ctrl-card h3{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;font-family:var(--font-mono);}
+.ctrl-card .subtitle{font-family:var(--font-mono);font-size:9px;color:var(--muted);margin-bottom:10px;line-height:1.7;}
+
+.btn-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
+.btn{font-family:var(--font-mono);font-size:11px;font-weight:700;padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;letter-spacing:.05em;transition:all .15s;}
+.btn:hover{border-color:var(--blue);color:var(--blue);}
+.btn:active{transform:scale(.97);}
+.btn.green{background:rgba(22,179,153,.08);border-color:rgba(22,179,153,.35);color:var(--green);}
+.btn.green:hover{background:rgba(22,179,153,.18);}
+.btn.red{background:rgba(226,80,74,.08);border-color:rgba(226,80,74,.35);color:var(--red);}
+.btn.red:hover{background:rgba(226,80,74,.18);}
+.btn.amber{background:rgba(240,169,43,.08);border-color:rgba(240,169,43,.35);color:var(--amber);}
+.btn.amber:hover{background:rgba(240,169,43,.18);}
+.btn.purple{background:rgba(181,123,245,.08);border-color:rgba(181,123,245,.35);color:var(--purple);}
+.btn.purple:hover{background:rgba(181,123,245,.18);}
+.btn.full{width:100%;}
+
+.param-list{display:flex;flex-direction:column;gap:10px;}
+.param-row{display:grid;grid-template-columns:1fr 110px 80px;align-items:center;gap:8px;}
+.param-row label{font-size:11px;color:var(--muted);font-family:var(--font-mono);}
+.param-row input[type=number]{background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;font-family:var(--font-mono);font-size:12px;width:100%;transition:border-color .15s;}
+.param-row input[type=number]:focus{outline:none;border-color:var(--blue);}
+.current-val{font-family:var(--font-mono);font-size:11px;color:var(--amber);text-align:right;}
+.derived-val{font-family:var(--font-mono);font-size:10px;color:var(--purple);text-align:right;}
+.sep{height:1px;background:var(--border);margin:10px 0;}
+
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-family:var(--font-mono);font-size:11px;line-height:2.2;}
+.info-grid .lbl{color:var(--muted);}
+.info-grid .val{color:var(--text);}
+
+.mode-pill{display:inline-block;font-family:var(--font-mono);font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:.08em;text-transform:uppercase;}
+.pill-ON   {background:rgba(22,179,153,.12);color:var(--green); border:1px solid rgba(22,179,153,.25);}
+.pill-OFF  {background:rgba(90,95,107,.12);color:var(--muted); border:1px solid rgba(90,95,107,.25);}
+.pill-BOOST{background:rgba(22,179,153,.12);color:var(--green); border:1px solid rgba(22,179,153,.25);}
+.pill-BUCK {background:rgba(226,80,74,.12); color:var(--red);   border:1px solid rgba(226,80,74,.25);}
+
+.log-panel{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;}
+.log-panel h3{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-family:var(--font-mono);}
+#log-box{font-family:var(--font-mono);font-size:11px;color:var(--muted);height:180px;overflow-y:auto;background:var(--bg3);border-radius:8px;padding:10px 12px;line-height:1.8;}
+#log-box p{margin:0;}
+#log-box p.fault{color:var(--red);}
+#log-box p.ok{color:var(--green);}
+#log-box p.cmd{color:var(--blue);}
+
+.conn-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;margin-right:6px;animation:pulse 1.5s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+.omega-note{font-family:var(--font-mono);font-size:9px;color:var(--purple);margin-top:4px;padding:6px 10px;background:rgba(181,123,245,.06);border-radius:6px;border-left:2px solid rgba(181,123,245,.3);}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <div class="logo">
+      <div class="logo-mark">∿</div>
+      <div>
+        <h1>Control Corriente <span>/ Agente 1</span></h1>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:2px">
+          PI Voltaje + Droop SoC + PI Corriente · Topología automática · Firebase RT
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div id="device-status" style="display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;padding:5px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg2)">
+        <span id="device-dot" style="width:8px;height:8px;border-radius:50%;background:#555;flex-shrink:0;transition:background .4s"></span>
+        <span id="device-label" style="color:var(--muted)">Esperando...</span>
+      </div>
+      <span class="fb-badge">FIREBASE LIVE</span>
+      <a href="/control.html" class="nav-link">⚡ Conversor</a>
+      <a href="/" class="nav-link">← Monitoreo</a>
+    </div>
+  </header>
+
+  <div id="fault-banner">
+    <span id="fault-msg">⚠ FAULT ACTIVO — Control detenido por protección</span>
+    <button class="btn red" id="btn-clear-fault">Limpiar Fault</button>
+  </div>
+
+  <div id="hw-banner-warn"     class="hw-banner hw-warn">    <span>⚠</span><span id="hw-msg-warn"></span></div>
+  <div id="hw-banner-error"    class="hw-banner hw-error">   <span>✖</span><span id="hw-msg-error"></span></div>
+  <div id="hw-banner-critical" class="hw-banner hw-critical"><span>✖✖</span><span id="hw-msg-critical"></span></div>
+
+  <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">
+    Telemetría en tiempo real · <span id="last-update">esperando datos...</span>
+  </div>
+
+  <!-- Telemetría estado -->
+  <div class="status-bar">
+    <div class="stat-card">
+      <div class="s-label">V Bus</div>
+      <div class="s-value col-amber" id="s-vbus">–<span class="s-unit">V</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="s-label">V Batería</div>
+      <div class="s-value col-blue" id="s-vbat">–<span class="s-unit">V</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="s-label">I salida</div>
+      <div class="s-value col-green" id="s-iout">–<span class="s-unit">A</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="s-label">SoC batería</div>
+      <div class="s-value" id="s-soc">–<span class="s-unit">%</span></div>
+      <div class="soc-bar-wrap"><div class="soc-bar-fill" id="soc-bar" style="width:0%"></div></div>
+    </div>
+    <div class="stat-card">
+      <div class="s-label">I Referencia</div>
+      <div class="s-value col-purple" id="s-iref">–<span class="s-unit">A</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="s-label">Duty aplicado</div>
+      <div class="s-value" id="s-duty">–<span class="s-unit">%</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="s-label">Topología</div>
+      <div id="s-topo" class="mode-pill pill-OFF" style="margin-top:4px">–</div>
+    </div>
+    <div class="stat-card">
+      <div class="s-label">Run Mode</div>
+      <div id="s-run" class="mode-pill pill-OFF" style="margin-top:4px">–</div>
+    </div>
+  </div>
+
+  <!-- Gráficas -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-label">V Bus vs Target — últimas 80 muestras</div>
+      <canvas id="chart-v"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-label">I out vs I ref — últimas 80 muestras</div>
+      <canvas id="chart-i"></canvas>
+    </div>
+  </div>
+
+  <div class="control-grid">
+
+    <!-- Modo de operación -->
+    <div class="ctrl-card">
+      <h3>Modo de operación</h3>
+      <div class="subtitle">
+        La topología se selecciona automáticamente:<br>
+        i_ref &gt; 0 → BOOST (batería → bus) &nbsp;|&nbsp; i_ref &lt; 0 → BUCK (bus → batería)
+      </div>
+      <div class="btn-row">
+        <button class="btn green full" id="btn-on">▶ ACTIVAR CONTROL</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn red full" id="btn-off">■ DETENER</button>
+      </div>
+      <div class="sep"></div>
+      <button class="btn red full" id="btn-clear-fault2">🔄 Limpiar Fault</button>
+      <div class="sep"></div>
+      <div class="info-grid">
+        <span class="lbl">I ref total:</span>  <span class="val"><span id="inf-iref">–</span> A</span>
+        <span class="lbl">I ref (PI V):</span>  <span class="val"><span id="inf-iref-v">–</span> A</span>
+        <span class="lbl">I ref (Droop):</span> <span class="val"><span id="inf-iref-d">–</span> A</span>
+        <span class="lbl">Duty cmd:</span>       <span class="val"><span id="inf-duty-cmd">–</span> %</span>
+        <span class="lbl">Topología:</span>      <span class="val"><span id="inf-topo">–</span></span>
+        <span class="lbl">Fault:</span>          <span class="val"><span id="inf-fault">–</span></span>
+      </div>
+    </div>
+
+    <!-- PI Voltaje -->
+    <div class="ctrl-card">
+      <h3>Lazo externo — PI voltaje</h3>
+      <div class="subtitle">
+        error_v = Target − V_bus → i_ref_v<br>
+        wc_v = 2π·fsw/200 &nbsp; Kp_v = wc_v·C &nbsp; Ki_v = Kp_v·wc_v/10
+      </div>
+      <div class="param-list">
+        <div class="param-row">
+          <label>Target V</label>
+          <input type="number" id="p-target_v" step="0.1" min="0.5" max="10" value="5.0">
+          <span class="current-val" id="cv-target_v">–</span>
+        </div>
+        <div class="param-row">
+          <label>wc_v (rad/s)</label>
+          <input type="number" id="p-omega_v" step="10" min="1" max="100000" value="314">
+          <span class="current-val" id="cv-omega_v">–</span>
+        </div>
+      </div>
+      <div class="omega-note" id="note-v">Kp_v = — &nbsp;|&nbsp; Ki_v = —</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;font-family:var(--font-mono);font-size:10px">
+        <div style="color:var(--muted)">Kp_v (ESP32): <span id="cv-kp_v" style="color:var(--purple)">–</span></div>
+        <div style="color:var(--muted)">Ki_v (ESP32): <span id="cv-ki_v" style="color:var(--purple)">–</span></div>
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn full purple" id="btn-apply-v">Aplicar Lazo Voltaje</button>
+      </div>
+    </div>
+
+    <!-- PI Corriente -->
+    <div class="ctrl-card">
+      <h3>Lazo interno — PI corriente</h3>
+      <div class="subtitle">
+        error_i = i_ref − i_out → duty<br>
+        Gi(s) = Vdc/(sL) &nbsp; Kp_i = wc_i · L / Vdc &nbsp; Ki_i = Kp_i · wc_i / 10
+      </div>
+      <div class="param-list">
+        <div class="param-row">
+          <label>wc_i (rad/s)</label>
+          <input type="number" id="p-omega_i" step="50" min="1" max="100000" value="314">
+          <span class="current-val" id="cv-omega_i">–</span>
+        </div>
+        <div class="param-row">
+          <label>Vdc bus (V)</label>
+          <input type="number" id="p-plant_vdc" step="0.1" min="0.5" max="100" value="5.0">
+          <span class="current-val" id="cv-plant_vdc">–</span>
+        </div>
+      </div>
+      <div class="omega-note" id="note-i">Kp_i = — &nbsp;|&nbsp; Ki_i = —</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;font-family:var(--font-mono);font-size:10px">
+        <div style="color:var(--muted)">Kp_i (ESP32): <span id="cv-kp_i" style="color:var(--purple)">–</span></div>
+        <div style="color:var(--muted)">Ki_i (ESP32): <span id="cv-ki_i" style="color:var(--purple)">–</span></div>
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn full purple" id="btn-apply-i">Aplicar Lazo Corriente</button>
+      </div>
+    </div>
+
+    <!-- Droop -->
+    <div class="ctrl-card">
+      <h3>Control Droop — SoC</h3>
+      <div class="subtitle">
+        i_ref_d = kd · (SoC − 0.5)<br>
+        SoC &gt; 0.5 → exporta corriente &nbsp;|&nbsp; SoC &lt; 0.5 → importa
+      </div>
+      <div class="param-list">
+        <div class="param-row">
+          <label>kd droop (A)</label>
+          <input type="number" id="p-kd_droop" step="0.1" min="0" max="20" value="2.0">
+          <span class="current-val" id="cv-kd_droop">–</span>
+        </div>
+        <div class="param-row">
+          <label>I ref máx (A)</label>
+          <input type="number" id="p-i_ref_max" step="0.1" min="0" max="10" value="5.0">
+          <span class="current-val" id="cv-i_ref_max">–</span>
+        </div>
+        <div class="param-row">
+          <label>I ref mín (A)</label>
+          <input type="number" id="p-i_ref_min" step="0.1" min="-10" max="0" value="-5.0">
+          <span class="current-val" id="cv-i_ref_min">–</span>
+        </div>
+      </div>
+      <div style="margin-top:12px;font-family:var(--font-mono);font-size:10px;color:var(--muted)">
+        SoC actual: <span id="inf-soc-pct" style="color:var(--green);font-size:13px;font-weight:700">–</span> %
+        &nbsp;|&nbsp; i_ref_d: <span id="inf-iref-d2" style="color:var(--purple)">–</span> A
+      </div>
+      <div style="margin-top:10px">
+        <button class="btn full amber" id="btn-apply-droop">Aplicar Droop</button>
+      </div>
+    </div>
+
+    <!-- Protecciones -->
+    <div class="ctrl-card">
+      <h3>Protecciones</h3>
+      <div class="param-list">
+        <div class="param-row">
+          <label>Sobrevoltaje (V)</label>
+          <input type="number" id="p-ov_trip" step="0.1" min="4" max="15" value="6.5">
+          <span class="current-val" id="cv-ov_trip">–</span>
+        </div>
+        <div class="param-row">
+          <label>Subvoltaje (V)</label>
+          <input type="number" id="p-uv_trip" step="0.1" min="0" max="4" value="2.0">
+          <span class="current-val" id="cv-uv_trip">–</span>
+        </div>
+        <div class="param-row">
+          <label>Sobrecorriente (A)</label>
+          <input type="number" id="p-oc_trip" step="0.1" min="0.1" max="10" value="5.5">
+          <span class="current-val" id="cv-oc_trip">–</span>
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-direction:column">
+        <button class="btn full red"    id="btn-apply-prot">Aplicar umbrales</button>
+        <button class="btn full amber"  id="btn-faults-off">⚠ Desactivar faults</button>
+        <button class="btn full green"  id="btn-faults-on" style="display:none">✔ Activar faults</button>
+      </div>
+    </div>
+
+    <!-- Límites PWM -->
+    <div class="ctrl-card">
+      <h3>Límites PWM</h3>
+      <div class="param-list">
+        <div class="param-row">
+          <label>Periodo PWM (µs)</label>
+          <input type="number" id="p-pwm_period" step="10" min="50" max="1000" value="50">
+          <span class="current-val" id="cv-pwm_period">–</span>
+        </div>
+        <div class="param-row">
+          <label>Ton máx (µs)</label>
+          <input type="number" id="p-ton_max" step="1" min="0" max="49" value="47">
+          <span class="current-val" id="cv-ton_max">–</span>
+        </div>
+        <div class="param-row">
+          <label>Min Off (µs)</label>
+          <input type="number" id="p-min_off" step="0.5" min="0" max="20" value="3">
+          <span class="current-val" id="cv-min_off">–</span>
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn full" id="btn-apply-pwm">Aplicar PWM</button>
+      </div>
+    </div>
+
+    <!-- Calibración sensores — ancho completo -->
+    <div class="ctrl-card" style="grid-column:1/-1">
+      <h3>Calibración sensores</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px">
+
+        <!-- Bus -->
+        <div>
+          <div style="font-size:10px;color:var(--amber);font-family:var(--font-mono);margin-bottom:8px">A0 — VOLTAJE BUS</div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);line-height:2.1">
+            Crudo ADS: <span id="cal-raw-bus" style="color:var(--text)">–</span> V<br>
+            Factor div: <span id="cal-div-bus" style="color:var(--amber)">–</span><br>
+            V calculada: <span id="cal-vbus" style="color:var(--green)">–</span> V
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+            <input type="number" id="cal-inp-bus" step="0.01" min="0.1" max="30" placeholder="Voltaje real (V)"
+                   style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-family:var(--font-mono);font-size:12px">
+            <button class="btn amber" id="btn-cal-bus">Calibrar</button>
+          </div>
+        </div>
+
+        <!-- Batería -->
+        <div>
+          <div style="font-size:10px;color:var(--blue);font-family:var(--font-mono);margin-bottom:8px">A1 — VOLTAJE BATERÍA</div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);line-height:2.1">
+            Crudo ADS: <span id="cal-raw-bat" style="color:var(--text)">–</span> V<br>
+            Factor div: <span id="cal-div-bat" style="color:var(--blue)">–</span><br>
+            V calculada: <span id="cal-vbat" style="color:var(--green)">–</span> V
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+            <input type="number" id="cal-inp-bat" step="0.01" min="0.1" max="30" placeholder="Voltaje real (V)"
+                   style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-family:var(--font-mono);font-size:12px">
+            <button class="btn" id="btn-cal-bat">Calibrar</button>
+          </div>
+        </div>
+
+        <!-- ACS712 offset -->
+        <div>
+          <div style="font-size:10px;color:var(--purple);font-family:var(--font-mono);margin-bottom:8px">A3 — ACS712 5A (OFFSET)</div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);line-height:2.1">
+            Crudo A3: <span id="cal-raw-acs" style="color:var(--text)">–</span> V<br>
+            Offset actual: <span id="cal-acs-offset" style="color:var(--purple)">–</span> V<br>
+            I calculada: <span id="cal-iout" style="color:var(--green)">–</span> A
+          </div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:8px">
+            Sensor: <span id="lbl-acs-model" style="color:var(--purple)">–</span>
+            &nbsp;|&nbsp; Sensibilidad: <span id="lbl-acs-sens" style="color:var(--purple)">–</span> V/A
+          </div>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+            <button class="btn purple full" id="btn-zero-acs">⊙ Fijar voltaje actual como 0 A</button>
+            <button class="btn full" id="btn-acs-model" style="background:rgba(100,100,120,.15);border:1px solid rgba(150,150,180,.3);color:var(--text)">⇄ Cambiar modelo: ACS712-<span id="lbl-acs-model-next">20A</span> → <span id="lbl-acs-model-next2">5A</span></button>
+            <button class="btn full" id="btn-acs-sign"  style="background:rgba(100,100,120,.15);border:1px solid rgba(150,150,180,.3);color:var(--text)">⇄ Invertir dirección (signo: <span id="lbl-acs-sign">+1</span>)</button>
+          </div>
+          <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted);margin-top:6px;line-height:1.6">
+            Zero: asegúrate de que la corriente sea 0 A antes de presionar.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <div class="log-panel">
+    <h3><span class="conn-dot"></span>Log · Firebase Realtime</h3>
+    <div id="log-box"></div>
+  </div>
+
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, onValue, update }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getAuth, signInAnonymously }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey           : "AIzaSyDwXigQYn1N0nreSYCJ8h0ta63i1mjIWK8",
+  authDomain       : "microred-dc.firebaseapp.com",
+  databaseURL      : "https://microred-dc-default-rtdb.firebaseio.com",
+  projectId        : "microred-dc",
+  storageBucket    : "microred-dc.firebasestorage.app",
+  messagingSenderId: "929937213017",
+  appId            : "1:929937213017:web:73d86c234238f151195348"
+};
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+/* ── Auth anónima: necesaria para que las reglas permitan leer/escribir ── */
+const auth = getAuth(app);
+try {
+  await signInAnonymously(auth);
+} catch (e) {
+  console.error("[Auth] Falló el inicio de sesión anónimo:", e);
+}
+
+const paramsRef = ref(db, "agente1/params");
+
+/* ── Escribir params ── */
+async function writeParams(fields) {
+  try {
+    await update(paramsRef, fields);
+    addLog("✓ Actualizado: " + JSON.stringify(fields), "ok");
+  } catch(e) {
+    addLog("✗ Error Firebase: " + e.message, "fault");
+  }
+}
+
+/* ── Log ── */
+function addLog(msg, cls='') {
+  const box = document.getElementById('log-box');
+  const p   = document.createElement('p');
+  if (cls) p.className = cls;
+  p.textContent = new Date().toLocaleTimeString('es-CL') + '  ' + msg;
+  box.appendChild(p);
+  while (box.children.length > 120) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ── Utilidades DOM ── */
+const $ = id => document.getElementById(id);
+function setText(id, html) { const e=$(id); if(e) e.innerHTML=html; }
+function setTxt(id, v)     { const e=$(id); if(e) e.textContent=v??'–'; }
+function fmt(v, d=3)       { const n=parseFloat(v); return isNaN(n)?'–':n.toFixed(d); }
+function getNum(id)        { return parseFloat($(id).value); }
+function setPill(id, mode) { const e=$(id); if(!e)return; e.textContent=mode; e.className='mode-pill pill-'+mode; }
+
+/* ── Preview Kp/Ki al editar wc ── */
+const L_H = 2.8e-3, C_F = 2200e-6;   // hardware fijo
+function updatePreviewV() {
+  const wc = parseFloat($('p-omega_v').value);
+  if (!isNaN(wc) && wc > 0) {
+    const kpV = wc * C_F;
+    const kiV = kpV * wc / 10;
+    $('note-v').textContent = 'Kp_v = ' + kpV.toFixed(4) + '  |  Ki_v = ' + kiV.toFixed(3);
+  }
+}
+function updatePreviewI() {
+  const wc  = parseFloat($('p-omega_i').value);
+  const vdc = parseFloat($('p-plant_vdc').value);
+  if (!isNaN(wc) && wc > 0 && !isNaN(vdc) && vdc >= 0.5) {
+    const kpI = wc * L_H / vdc;
+    const kiI = kpI * wc / 10;
+    $('note-i').textContent = 'Kp_i = ' + kpI.toFixed(4) + '  |  Ki_i = ' + kiI.toFixed(2);
+  }
+}
+$('p-omega_v').addEventListener('input', updatePreviewV);
+$('p-omega_i').addEventListener('input', updatePreviewI);
+$('p-plant_vdc').addEventListener('input', updatePreviewI);
+updatePreviewV(); updatePreviewI();
+
+/* ── Gráficas ── */
+const MAX_PTS = 80;
+function makeChart(canvasId, label1, color1, label2, color2) {
+  const labels = [], d1 = [], d2 = [];
+  const chart = new Chart($(canvasId).getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets: [
+      {label:label1, data:d1, borderColor:color1, borderWidth:1.5, pointRadius:0, fill:false, tension:.3},
+      {label:label2, data:d2, borderColor:color2, borderWidth:1.2, borderDash:[6,4], pointRadius:0, fill:false, tension:0}
+    ]},
+    options: {
+      animation:false, responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:true,labels:{color:'#8fa3bd',font:{family:'Space Mono',size:10},boxWidth:12,padding:12}}},
+      scales:{x:{display:false},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8fa3bd',font:{family:'Space Mono',size:10}}}}
+    }
+  });
+  return { push(v1, v2) {
+    labels.push(''); d1.push(+v1||0); d2.push(+v2||0);
+    if (labels.length > MAX_PTS) { labels.shift(); d1.shift(); d2.shift(); }
+    chart.update('none');
+  }};
+}
+
+const chartV = makeChart('chart-v', 'V Bus',  '#f0a92b', 'Target V', '#16b399');
+const chartI = makeChart('chart-i', 'I out',  '#3d8ce0', 'I ref',    '#7b6fff');
+
+/* ── Último valor crudo A3 recibido por telemetría ── */
+let lastRawA3 = NaN;
+
+/* ── Indicador conexión ESP32 ── */
+const dot   = $('device-dot');
+const dlabel = $('device-label');
+let offlineTimer = null;
+
+function setDeviceOnline() {
+  dot.style.background = '#16b399'; dot.style.boxShadow = '0 0 6px #16b399';
+  dlabel.style.color = '#16b399'; dlabel.textContent = 'ESP32 conectada';
+  clearTimeout(offlineTimer);
+  offlineTimer = setTimeout(setDeviceOffline, 20000);   // holgura: la telemetría llega con latencia
+}
+function setDeviceOffline() {
+  dot.style.background = '#e2504a'; dot.style.boxShadow = 'none';
+  dlabel.style.color = '#e2504a'; dlabel.textContent = 'ESP32 desconectada';
+}
+
+/* ── Estado compartido entre el listener de telemetría y los botones ── */
+let currentAcsSign = 1;
+const ACS_MODELS = [
+  { name: '5A',  sens: 0.185 },
+  { name: '20A', sens: 0.100 }
+];
+let acsModelIdx = 1;  // defecto 20A (el que está conectado)
+function updateAcsModelUI() {
+  const cur  = ACS_MODELS[acsModelIdx];
+  const next = ACS_MODELS[1 - acsModelIdx];
+  setTxt('lbl-acs-model',      'ACS712-' + cur.name);
+  setTxt('lbl-acs-model-next', 'ACS712-' + cur.name);
+  setTxt('lbl-acs-model-next2','ACS712-' + next.name);
+}
+
+/* ── Listener telemetría ── */
+onValue(ref(db, "agente1/telemetria"), (snap) => {
+  const d = snap.val();
+  if (!d) { setDeviceOffline(); return; }
+  setDeviceOnline();
+
+  const socPct = parseFloat(d.soc||0) * 100;
+
+  setText('s-vbus', fmt(d.v_bus,3) + '<span class="s-unit">V</span>');
+  setText('s-vbat', fmt(d.v_bat,3) + '<span class="s-unit">V</span>');
+  setText('s-iout', fmt(d.i_out,3) + '<span class="s-unit">A</span>');
+  setText('s-soc',  socPct.toFixed(1) + '<span class="s-unit">%</span>');
+  setText('s-iref', fmt(d.i_ref,3) + '<span class="s-unit">A</span>');
+  setText('s-duty', fmt((parseFloat(d.duty_applied||0)*100),1) + '<span class="s-unit">%</span>');
+  setPill('s-topo', d.topology || 'OFF');
+  setPill('s-run',  d.run_mode || 'OFF');
+
+  // SoC bar
+  const bar = $('soc-bar');
+  if (bar) {
+    bar.style.width = socPct.toFixed(1) + '%';
+    bar.style.background = socPct > 60 ? '#16b399' : socPct > 30 ? '#f0a92b' : '#e2504a';
+  }
+
+  // Panel estado
+  setTxt('inf-iref',     fmt(d.i_ref,3));
+  setTxt('inf-iref-v',  fmt(d.i_ref_v,3));
+  setTxt('inf-iref-d',  fmt(d.i_ref_d,3));
+  setTxt('inf-duty-cmd', fmt((parseFloat(d.duty_cmd||0)*100),1));
+  setTxt('inf-topo',   d.topology||'–');
+  setTxt('inf-fault',  d.fault ? '⚠ ACTIVO' : 'OK');
+  if ($('inf-fault')) $('inf-fault').style.color = d.fault ? 'var(--red)' : 'var(--green)';
+
+  // Droop live
+  setTxt('inf-soc-pct',  socPct.toFixed(1));
+  setTxt('inf-iref-d2',  fmt(d.i_ref_d,3));
+
+  // Ganancias derivadas recibidas desde ESP32
+  setTxt('cv-kp_v', fmt(d.kp_v,3)); setTxt('cv-ki_v', fmt(d.ki_v,3));
+  setTxt('cv-kp_i', fmt(d.kp_i,3)); setTxt('cv-ki_i', fmt(d.ki_i,3));
+
+  // Valores actuales en los inputs (columna derecha)
+  setTxt('cv-target_v', fmt(d.target_v,2));
+  setTxt('cv-omega_v', fmt(d.omega_v, 1));
+  setTxt('cv-omega_i', fmt(d.omega_i, 1));
+  setTxt('cv-plant_vdc', fmt(d.plant_vdc, 2));
+  setTxt('cv-kd_droop', fmt(d.kd_droop,2));
+  setTxt('cv-i_ref_max', fmt(d.i_ref_max,2));
+  setTxt('cv-i_ref_min', fmt(d.i_ref_min,2));
+  setTxt('cv-ov_trip',   fmt(d.ov_trip??d.overvoltageTrip,2));
+  setTxt('cv-uv_trip',   fmt(d.uv_trip??d.undervoltageTrip,2));
+  setTxt('cv-oc_trip',   fmt(d.oc_trip??d.overcurrentTrip,2));
+  setTxt('cv-pwm_period', fmt(d.pwm_period,0));
+  setTxt('cv-ton_max',   fmt(d.ton_max,1));
+  setTxt('cv-min_off',   fmt(d.min_off,1));
+
+  // Calibración
+  setTxt('cal-raw-bus',    fmt(d.rawVoltsA0??d.raw_a0, 4));
+  setTxt('cal-div-bus',    fmt(d.divFactorBus??d.div_bus, 4));
+  setTxt('cal-vbus',       fmt(d.v_bus, 3));
+  setTxt('cal-raw-bat',    fmt(d.rawVoltsA1??d.raw_a1, 4));
+  setTxt('cal-div-bat',    fmt(d.divFactorBat??d.div_bat, 4));
+  setTxt('cal-vbat',       fmt(d.v_bat, 3));
+  lastRawA3 = parseFloat(d.rawVoltsA3 ?? d.raw_a3);
+  setTxt('cal-raw-acs',    fmt(lastRawA3, 4));
+  setTxt('cal-acs-offset', fmt(d.acsOffset??d.acs_offset, 4));
+  if (d.acsSign != null) {
+    currentAcsSign = parseFloat(d.acsSign) >= 0 ? 1 : -1;
+    setTxt('lbl-acs-sign', currentAcsSign > 0 ? '+1' : '-1');
+  }
+  if (d.acsSensitivity != null) {
+    const s = parseFloat(d.acsSensitivity);
+    setTxt('lbl-acs-sens', s.toFixed(3));
+    // inferir modelo por proximidad
+    const idx = Math.abs(s - 0.185) < Math.abs(s - 0.100) ? 0 : 1;
+    if (idx !== acsModelIdx) { acsModelIdx = idx; updateAcsModelUI(); }
+  }
+  setTxt('cal-iout',       fmt(d.i_out, 3));
+
+  // Fault banner
+  $('fault-banner').style.display = d.fault ? 'flex' : 'none';
+  if (d.fault) {
+    setTxt('fault-msg', '⚠ ' + (d.fault_msg || 'FAULT ACTIVO — Control detenido por protección'));
+  }
+  $('hw-banner-warn').style.display     = d.hw_level === 'warn'     ? 'flex' : 'none';
+  $('hw-banner-error').style.display    = d.hw_level === 'error'    ? 'flex' : 'none';
+  $('hw-banner-critical').style.display = d.hw_level === 'critical' ? 'flex' : 'none';
+  if (d.hw_msg) {
+    setTxt('hw-msg-warn',     d.hw_level === 'warn'     ? d.hw_msg : '');
+    setTxt('hw-msg-error',    d.hw_level === 'error'    ? d.hw_msg : '');
+    setTxt('hw-msg-critical', d.hw_level === 'critical' ? d.hw_msg : '');
+  }
+
+  setTxt('last-update', 'Últ. actualización: ' + new Date().toLocaleTimeString('es-CL'));
+
+  chartV.push(d.v_bus, d.target_v);
+  chartI.push(d.i_out, d.i_ref);
+
+  if (d.fault) addLog('FAULT activo', 'fault');
+
+  // Sincronizar botón faults con estado real del ESP32
+  if (d.faults_enabled != null) {
+    $('btn-faults-off').style.display = d.faults_enabled ? '' : 'none';
+    $('btn-faults-on').style.display  = d.faults_enabled ? 'none' : '';
+  }
+});
+
+/* ── Botones ── */
+function initControlUI() {
+
+  $('btn-on').addEventListener('click',  () => writeParams({ run_mode: 1 }));
+  $('btn-off').addEventListener('click', () => writeParams({ run_mode: 0 }));
+
+  $('btn-clear-fault').addEventListener('click',  () => writeParams({ run_mode: 0, fault_ack: true }));
+  $('btn-clear-fault2').addEventListener('click', () => writeParams({ run_mode: 0, fault_ack: true }));
+
+  // Lazo voltaje
+  $('btn-apply-v').addEventListener('click', () => {
+    const p = { target_v: getNum('p-target_v'), omega_v: getNum('p-omega_v') };
+    if (Object.values(p).some(isNaN)) { addLog('Valores inválidos','fault'); return; }
+    writeParams(p);
+  });
+
+  // Lazo corriente
+  $('btn-apply-i').addEventListener('click', () => {
+    const wc  = getNum('p-omega_i');
+    const vdc = getNum('p-plant_vdc');
+    if (isNaN(wc) || isNaN(vdc)) { addLog('Valores inválidos','fault'); return; }
+    writeParams({ omega_i: wc, plant_vdc: vdc });
+  });
+
+  // Droop
+  $('btn-apply-droop').addEventListener('click', () => {
+    const p = {
+      kd_droop:  getNum('p-kd_droop'),
+      i_ref_max: getNum('p-i_ref_max'),
+      i_ref_min: getNum('p-i_ref_min')
+    };
+    if (Object.values(p).some(isNaN)) { addLog('Valores inválidos','fault'); return; }
+    writeParams(p);
+  });
+
+  // Protecciones
+  $('btn-apply-prot').addEventListener('click', () => {
+    const p = {
+      ov_trip: getNum('p-ov_trip'),
+      uv_trip: getNum('p-uv_trip'),
+      oc_trip: getNum('p-oc_trip')
+    };
+    if (Object.values(p).some(isNaN)) { addLog('Valores inválidos','fault'); return; }
+    writeParams(p);
+  });
+
+  $('btn-faults-off').addEventListener('click', () => {
+    writeParams({ faults_enabled: false });
+    $('btn-faults-off').style.display = 'none';
+    $('btn-faults-on').style.display  = '';
+    addLog('Faults desactivados — solo para pruebas', 'warn');
+  });
+  $('btn-faults-on').addEventListener('click', () => {
+    writeParams({ faults_enabled: true });
+    $('btn-faults-on').style.display  = 'none';
+    $('btn-faults-off').style.display = '';
+    addLog('Faults activados', 'ok');
+  });
+
+  // PWM
+  $('btn-apply-pwm').addEventListener('click', () => {
+    const p = {
+      pwm_period: getNum('p-pwm_period'),
+      ton_max:    getNum('p-ton_max'),
+      min_off:    getNum('p-min_off')
+    };
+    if (Object.values(p).some(isNaN)) { addLog('Valores inválidos','fault'); return; }
+    writeParams(p);
+  });
+
+  // Calibración bus
+  $('btn-cal-bus').addEventListener('click', () => {
+    const v = getNum('cal-inp-bus');
+    if (isNaN(v) || v < 0.1) { addLog('Voltaje bus inválido','fault'); return; }
+    writeParams({ cal_bus: v });
+    addLog('Calibración bus enviada: ' + v + ' V', 'cmd');
+  });
+
+  // Calibración batería
+  $('btn-cal-bat').addEventListener('click', () => {
+    const v = getNum('cal-inp-bat');
+    if (isNaN(v) || v < 0.1) { addLog('Voltaje batería inválido','fault'); return; }
+    writeParams({ cal_bat: v });
+    addLog('Calibración batería enviada: ' + v + ' V', 'cmd');
+  });
+
+  // Offset ACS712 — fijar voltaje actual como 0A
+  $('btn-zero-acs').addEventListener('click', () => {
+    if (isNaN(lastRawA3) || lastRawA3 <= 0) {
+      addLog('Sin dato de A3 — espera a recibir telemetría', 'fault');
+      return;
+    }
+    writeParams({ acs_offset: lastRawA3 });
+    addLog('Offset ACS712 fijado en ' + lastRawA3.toFixed(4) + ' V (0 A)', 'cmd');
+  });
+
+  /* Toggle modelo ACS712: 5A (0.185 V/A) ↔ 20A (0.100 V/A) — estado en scope de módulo */
+  $('btn-acs-model').addEventListener('click', () => {
+    acsModelIdx = 1 - acsModelIdx;
+    const m = ACS_MODELS[acsModelIdx];
+    writeParams({ acs_sensitivity: m.sens });
+    setTxt('lbl-acs-sens', m.sens.toFixed(3));
+    updateAcsModelUI();
+    addLog('Sensor cambiado a ACS712-' + m.name + ' (' + m.sens.toFixed(3) + ' V/A)', 'cmd');
+  });
+
+  updateAcsModelUI();
+
+  $('btn-acs-sign').addEventListener('click', () => {
+    currentAcsSign = currentAcsSign > 0 ? -1 : 1;
+    writeParams({ acs_sign: currentAcsSign });
+    setTxt('lbl-acs-sign', currentAcsSign > 0 ? '+1' : '-1');
+    addLog('Dirección ACS712 invertida → signo ' + (currentAcsSign > 0 ? '+1' : '-1'), 'cmd');
+  });
+
+}
+
+/* Ejecuta el init aunque DOMContentLoaded ya se haya disparado durante el await de auth */
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initControlUI);
+else initControlUI();
+</script>
+</body>
+</html>
