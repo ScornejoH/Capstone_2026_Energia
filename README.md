@@ -2,6 +2,12 @@
 
 Firmware y plataforma web de supervisión para una **microrred DC de 5 V con tres agentes**. Cada agente es un ESP32 (Adafruit Feather ESP32) que controla un conversor buck‑boost bidireccional entre su batería y el bus común. Los agentes se coordinan por **CAN** y se supervisan desde una página web conectada a **Firebase Realtime Database**.
 
+## Equipo
+
+- Sebastián Cornejo
+- Samuel Rodríguez
+- Diego Enríquez
+
 ## Arquitectura
 
 ```mermaid
