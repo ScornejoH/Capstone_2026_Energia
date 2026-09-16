@@ -9,8 +9,8 @@ Firmware y plataforma web de supervisión para una **microrred DC de 5 V con tre
 | **Curso** | IEE2913 — Diseño Eléctrico (Capstone) |
 | **Institución** | Pontificia Universidad Católica de Chile · Escuela de Ingeniería · Departamento de Ingeniería Eléctrica |
 | **Semestre** | 2026‑1 |
-| **Profesor guía** | Saúl Langarica |
-| **Ayudantes (área Energía)** | Iñaki Gacitúa · Fernando Peñailillo |
+| **Profesores** | Saúl Langarica (profesor a cargo del curso) · Cristián Garcés · Tito Arévalo. Los tres apoyaron y evaluaron el proyecto. |
+| **Ayudante guía** | Iñaki Gacitúa |
 | **Área / proyecto** | Energía — Micro‑red DC |
 | **Grupo** | 03 |
 
@@ -31,6 +31,24 @@ El proyecto consiste en diseñar y construir una **microrred de 5 V**, el mismo 
 | **Agente 1** | Batería Li‑ion (9600 mAh) | Maestro del control secundario y puente WiFi/Firebase ↔ CAN |
 | **Agente 2** | Batería Li‑ion (9600 mAh) | Esclavo por CAN |
 | **Agente 3** | 2 baterías Li‑ion en serie (4800 mAh c/u) + panel fotovoltaico | Esclavo por CAN, con boost PV y MPPT |
+
+### Prototipo
+
+<p align="center">
+  <img src="docs/img/prototipo_3_agentes.jpg" alt="Prototipo final con los tres agentes sobre la base" width="55%">
+  <img src="docs/img/prototipo_agente_3.jpg" alt="Prototipo final del agente 3" width="38%">
+</p>
+<p align="center"><em>Izquierda: los tres agentes sobre la base de conexión. Derecha: el agente 3.</em></p>
+
+Cada agente va en su propia caja, con un interruptor de encendido y bornes de conexión al bus. La base tiene un puerto asignado a cada agente para que no se puedan conectar mal. Para operar el sistema se enciende el agente 1, que se conecta por WiFi al dashboard, y luego cualquier otro agente.
+
+### Dashboard
+
+<p align="center">
+  <img src="docs/img/dashboard.png" alt="Dashboard de supervisión de la microrred" width="90%">
+</p>
+
+En la parte superior hay botones para activar el control de cada agente y el MPPT del agente 3. El control solo arranca si el agente está conectado, encendido y sin fallas. Debajo se muestran el consenso de SoC del sistema, los mensajes de falla y, para cada agente, su estado (ON, OFF, FALLA o SIN CONEXIÓN), el voltaje de batería, la corriente de salida y la energía entregada y absorbida.
 
 ### Especificaciones y cumplimiento
 
