@@ -2,11 +2,64 @@
 
 Firmware y plataforma web de supervisión para una **microrred DC de 5 V con tres agentes**. Cada agente es un ESP32 (Adafruit Feather ESP32) que controla un conversor buck‑boost bidireccional entre su batería y el bus común. Los agentes se coordinan por **CAN** y se supervisan desde una página web conectada a **Firebase Realtime Database**.
 
+## Curso
+
+| | |
+|---|---|
+| **Curso** | IEE2913 — Diseño Eléctrico (Capstone) |
+| **Institución** | Pontificia Universidad Católica de Chile · Escuela de Ingeniería · Departamento de Ingeniería Eléctrica |
+| **Semestre** | 2026‑1 |
+| **Profesor guía** | Saúl Langarica |
+| **Ayudantes (área Energía)** | Iñaki Gacitúa · Fernando Peñailillo |
+| **Área / proyecto** | Energía — Micro‑red DC |
+| **Grupo** | 03 |
+
 ## Equipo
 
 - Sebastián Cornejo
 - Samuel Rodríguez
 - Diego Enríquez
+
+## El proyecto
+
+Las redes eléctricas modernas deben responder a una demanda creciente, con más fuentes renovables, más cargas electrónicas y mayor exposición a eventos extremos. Las **microrredes DC** integran de forma natural fuentes renovables, almacenamiento y cargas DC, con menos etapas de conversión y mayor eficiencia.
+
+El proyecto consiste en diseñar y construir una **microrred de 5 V**, el mismo voltaje que entrega un cargador USB. La forman **tres agentes autónomos y cooperativos** que se reparten la entrega de energía según la carga de sus baterías y mantienen el bus estable aunque cambie el consumo. También siguen operando si alguno de ellos se desconecta.
+
+| Agente | Fuente de energía | Rol |
+|---|---|---|
+| **Agente 1** | Batería Li‑ion (9600 mAh) | Maestro del control secundario y puente WiFi/Firebase ↔ CAN |
+| **Agente 2** | Batería Li‑ion (9600 mAh) | Esclavo por CAN |
+| **Agente 3** | 2 baterías Li‑ion en serie (4800 mAh c/u) + panel fotovoltaico | Esclavo por CAN, con boost PV y MPPT |
+
+### Especificaciones y cumplimiento
+
+Resultados reportados en el informe final del grupo:
+
+| Especificación | Cumplimiento | Implementación |
+|---|:---:|---|
+| Tres agentes DC‑DC autónomos y cooperativos | 100 % | Dos agentes con batería y un tercero con baterías 2S y panel fotovoltaico |
+| Regulación del bus en 5 V | 95 % | Bus estable ante cambios de carga; transitorios de ±1 V durante ~750 ms al cambiar entre buck y boost |
+| Control primario *droop* | 100 % | `I_droop = k_droop · (SoC − 50 %)` |
+| Control secundario suave | 100 % | PI de voltaje en cascada con PI de corriente |
+| Comunicación CAN | 100 % | MCP2515 + TJA1050, recepción por interrupción, matriz CAN con prioridades |
+| Estado de carga (SoC) y consenso | 100 % | Tabla de consulta (LUT) de la curva Li‑ion y consenso distribuido del sistema |
+| *Dashboard* de supervisión | 100 % | Web en Firebase: SoC, voltajes, corrientes, *smart metering*, fallas y configuración |
+| MPPT en el agente fotovoltaico | 100 % | Algoritmo *Perturb & Observe* con límites de corriente y voltaje de batería |
+| Gestión de baterías (BMS) | 100 % | Protecciones por software y BMS pasivo por hardware (TL431) en el agente 3 |
+| Aislación galvánica control/potencia | 100 % | Optoacopladores 6N137 (PWM), ISO1540 (I2C), fuente aislada B0505S |
+| Protecciones y manejo de fallas | 100 % | Fusibles, sobrevoltaje/subvoltaje, sobrecorriente, desconexión por ausencia de CAN (5 s) |
+
+Otros resultados: tiempo de respuesta del bus de unos 2 s y eficiencia de los conversores de ~65–78 % en la mayor parte del rango de operación.
+
+### Matriz CAN
+
+| Prioridad | Clase | ID base | Contenido | Periodo |
+|:---:|---|---|---|---|
+| 1 | FAULT | `0x0__` | Códigos de falla (sobrecorriente, sobrevoltaje, desconexión) | Por evento |
+| 2 | HIGH | `0x1__` | `i_out`, `i_ref`, `v_cons`, `v_bus_real` | 30 / 50 / 150 ms |
+| 3 | LOW | `0x2__` | SoC, `v_bus`, estado, *smart metering* | ~1000 ms |
+| 4 | CONFIG | `0x4__` | Parámetros enviados desde la web (Firebase → CAN) | Al cambiar un parámetro |
 
 ## Arquitectura
 
