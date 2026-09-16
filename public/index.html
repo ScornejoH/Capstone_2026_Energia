@@ -12,8 +12,7 @@
   import { initializeApp }  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getDatabase, ref, onValue, update }
                             from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-  import { getAuth, signInAnonymously }
-                            from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { setupAuth, canWrite } from "./auth.js";
 
   const firebaseConfig = {
     apiKey            : "AIzaSyDwXigQYn1N0nreSYCJ8h0ta63i1mjIWK8",
@@ -29,11 +28,12 @@
   const db  = getDatabase(app);
 
   /* Escribir comandos a /agenteN/params (run_mode / pv_arm / pv_mode). */
-  window.sendParams = (agent, fields) => update(ref(db, `/agente${agent}/params`), fields);
+  window.sendParams = (agent, fields) => canWrite()
+    ? update(ref(db, `/agente${agent}/params`), fields)
+    : Promise.reject(new Error("Solo lectura"));
 
-  const auth = getAuth(app);
-  try { await signInAnonymously(auth); }
-  catch (e) { console.error("[Auth] Falló el inicio de sesión anónimo:", e); }
+  /* Lectura pública; escribir requiere sesión de una cuenta del equipo. */
+  setupAuth(app, db);
 
   /* Valores por agente (uniforme): /agentes/agenteN */
   onValue(ref(db, "/agentes/agente1"), s => { const d = s.val(); if (d) window.updateAgent(1, d); });

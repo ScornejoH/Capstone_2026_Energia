@@ -3,37 +3,105 @@
     ".read": false,
     ".write": false,
 
+    "usuarios": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+
+    "dispositivos": {
+      ".read": false,
+      ".write": false
+    },
+
     "agente1": {
-      "params":     { ".read": "auth != null", ".write": "auth != null" },
-      "telemetria": { ".read": "auth != null", ".write": "auth.token.firebase.sign_in_provider === 'password'" }
+      "params": {
+        ".read": true,
+        ".write": "auth != null && (root.child('usuarios').child(auth.uid).val() === true || root.child('dispositivos').child(auth.uid).val() === true)",
+        "target_v":  { ".validate": "newData.isNumber() && newData.val() >= 3 && newData.val() <= 6" },
+        "i_ref_max": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5" },
+        "i_ref_min": { ".validate": "newData.isNumber() && newData.val() >= -5 && newData.val() <= 0" },
+        "ov_trip":   { ".validate": "newData.isNumber() && newData.val() >= 4 && newData.val() <= 8" },
+        "uv_trip":   { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5" },
+        "oc_trip":   { ".validate": "newData.isNumber() && newData.val() >= 0.1 && newData.val() <= 5" },
+        "$other":    { ".validate": "newData.isNumber() || newData.isBoolean() || (newData.isString() && newData.val().length <= 32)" }
+      },
+      "telemetria": {
+        ".read": true,
+        ".write": "auth != null && root.child('dispositivos').child(auth.uid).val() === true"
+      }
     },
 
     "agente2": {
-      "params": { ".read": "auth != null", ".write": "auth != null" }
+      "params": {
+        ".read": true,
+        ".write": "auth != null && (root.child('usuarios').child(auth.uid).val() === true || root.child('dispositivos').child(auth.uid).val() === true)",
+        "target_v":  { ".validate": "newData.isNumber() && newData.val() >= 3 && newData.val() <= 6" },
+        "i_ref_max": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5" },
+        "i_ref_min": { ".validate": "newData.isNumber() && newData.val() >= -5 && newData.val() <= 0" },
+        "ov_trip":   { ".validate": "newData.isNumber() && newData.val() >= 4 && newData.val() <= 8" },
+        "uv_trip":   { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5" },
+        "oc_trip":   { ".validate": "newData.isNumber() && newData.val() >= 0.1 && newData.val() <= 5" },
+        "$other":    { ".validate": "newData.isNumber() || newData.isBoolean() || (newData.isString() && newData.val().length <= 32)" }
+      }
     },
 
     "agente3": {
-      "params": { ".read": "auth != null", ".write": "auth != null" }
+      "params": {
+        ".read": true,
+        ".write": "auth != null && (root.child('usuarios').child(auth.uid).val() === true || root.child('dispositivos').child(auth.uid).val() === true)",
+        "target_v":         { ".validate": "newData.isNumber() && newData.val() >= 3 && newData.val() <= 6" },
+        "i_ref_max":        { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5" },
+        "i_ref_min":        { ".validate": "newData.isNumber() && newData.val() >= -5 && newData.val() <= 0" },
+        "ov_trip":          { ".validate": "newData.isNumber() && newData.val() >= 4 && newData.val() <= 8" },
+        "uv_trip":          { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5" },
+        "oc_trip":          { ".validate": "newData.isNumber() && newData.val() >= 0.1 && newData.val() <= 5" },
+        "bat_ov_trip":      { ".validate": "newData.isNumber() && newData.val() >= 6 && newData.val() <= 8.8" },
+        "bat_uv_trip":      { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 7.4" },
+        "pv_bat_trip_high": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 8.8" },
+        "pv_iin_max":       { ".validate": "newData.isNumber() && newData.val() >= 0.05 && newData.val() <= 4" },
+        "pv_ibat_max":      { ".validate": "newData.isNumber() && newData.val() >= 0.05 && newData.val() <= 2.5" },
+        "$other":           { ".validate": "newData.isNumber() || newData.isBoolean() || (newData.isString() && newData.val().length <= 32)" }
+      }
     },
 
     "conversor": {
-      "params":     { ".read": "auth != null", ".write": "auth != null" },
-      "telemetria": { ".read": "auth != null", ".write": "auth.token.firebase.sign_in_provider === 'password'" }
+      "params": {
+        ".read": true,
+        ".write": "auth != null && (root.child('usuarios').child(auth.uid).val() === true || root.child('dispositivos').child(auth.uid).val() === true)",
+        "target_v":  { ".validate": "newData.isNumber() && newData.val() >= 3 && newData.val() <= 6" },
+        "$other":    { ".validate": "newData.isNumber() || newData.isBoolean() || (newData.isString() && newData.val().length <= 32)" }
+      },
+      "telemetria": {
+        ".read": true,
+        ".write": "auth != null && root.child('dispositivos').child(auth.uid).val() === true"
+      }
     },
 
     "agentes": {
-      ".read":  "auth != null",
-      ".write": "auth.token.firebase.sign_in_provider === 'password'"
+      ".read": true,
+      ".write": "auth != null && root.child('dispositivos').child(auth.uid).val() === true"
+    },
+
+    "consenso": {
+      ".read": true,
+      ".write": "auth != null && root.child('dispositivos').child(auth.uid).val() === true"
+    },
+
+    "sistema": {
+      ".read": true,
+      ".write": "auth != null && root.child('dispositivos').child(auth.uid).val() === true"
     },
 
     "history": {
-      ".read":  "auth != null",
-      ".write": "auth.token.firebase.sign_in_provider === 'password'"
+      ".read": true,
+      ".write": "auth != null && root.child('dispositivos').child(auth.uid).val() === true"
     },
 
     "loghf": {
-      ".read":  "auth != null",
-      ".write": "auth.token.firebase.sign_in_provider === 'password'"
+      ".read": true,
+      ".write": "auth != null && root.child('dispositivos').child(auth.uid).val() === true"
     }
   }
 }

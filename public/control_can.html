@@ -288,8 +288,7 @@ h1 span{color:var(--muted);font-weight:400;}
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getDatabase, ref, onValue, update }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-import { getAuth, signInAnonymously }
-  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { setupAuth, canWrite } from "./auth.js";
 
 const firebaseConfig = {
   apiKey           : "AIzaSyDwXigQYn1N0nreSYCJ8h0ta63i1mjIWK8",
@@ -303,10 +302,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
-/* ── Auth anónima ── */
-const auth = getAuth(app);
-try { await signInAnonymously(auth); }
-catch (e) { console.error("[Auth] Falló el inicio de sesión anónimo:", e); }
+/* ── Lectura pública; escribir requiere sesión de una cuenta del equipo ── */
+setupAuth(app, db);
 
 /* ── Utilidades DOM ── */
 const $ = id => document.getElementById(id);
@@ -330,6 +327,7 @@ const a1Ref = ref(db, "agente1/params");
 const a2Ref = ref(db, "agente2/params");
 const a3Ref = ref(db, "agente3/params");
 async function writeA(agent, fields){
+  if (!canWrite()) return;
   try {
     await update(agent === 1 ? a1Ref : agent === 2 ? a2Ref : a3Ref, fields);
     addLog("✓ a" + agent + " ← " + JSON.stringify(fields), "ok");

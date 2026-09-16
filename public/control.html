@@ -178,7 +178,7 @@ h1 span{color:var(--muted);font-weight:400;}
     <div class="ctrl-card">
       <h3>Control PI + Feedforward</h3>
       <div class="param-list">
-        <div class="param-row"><label>Target V</label><input type="number" id="p-target_v" step="0.05" min="0.5" max="6"  value="5.00"><span class="current-val" id="cv-target_v">–</span></div>
+        <div class="param-row"><label>Target V</label><input type="number" id="p-target_v" step="0.05" min="3" max="6"  value="5.00"><span class="current-val" id="cv-target_v">–</span></div>
         <div class="param-row"><label>Kp</label>      <input type="number" id="p-kp"       step="0.5"  min="0"   max="40" value="10">  <span class="current-val" id="cv-kp">–</span></div>
         <div class="param-row"><label>Ki</label>      <input type="number" id="p-ki"       step="0.5"  min="0"   max="40" value="5">   <span class="current-val" id="cv-ki">–</span></div>
         <div class="param-row"><label>FF Scale</label><input type="number" id="p-ff_scale" step="0.05" min="0"   max="2"  value="1.5"> <span class="current-val" id="cv-ff_scale">–</span></div>
@@ -277,8 +277,7 @@ h1 span{color:var(--muted);font-weight:400;}
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getDatabase, ref, onValue, update }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-import { getAuth, signInAnonymously }
-  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { setupAuth, canWrite } from "./auth.js";
 
 /* ── Config Firebase ── */
 const firebaseConfig = {
@@ -293,18 +292,14 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
-/* ── Auth anónima: necesaria para que las reglas permitan leer/escribir ── */
-const auth = getAuth(app);
-try {
-  await signInAnonymously(auth);
-} catch (e) {
-  console.error("[Auth] Falló el inicio de sesión anónimo:", e);
-}
+/* ── Lectura pública; escribir requiere sesión de una cuenta del equipo ── */
+setupAuth(app, db);
 
 const paramsRef = ref(db, "conversor/params");
 
 /* ── Escribir params en Firebase ── */
 async function writeParams(fields) {
+  if (!canWrite()) return;
   try {
     await update(paramsRef, fields);
     addLog("✓ Firebase actualizado: " + JSON.stringify(fields), "ok");

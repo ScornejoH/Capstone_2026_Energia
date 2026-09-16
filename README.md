@@ -111,5 +111,10 @@ firebase deploy --only hosting,database
 
 ## Seguridad
 
+- **La web es pública solo para mirar.** Cualquiera puede ver la telemetría y los parámetros, pero para enviar comandos hay que iniciar sesión (botón abajo a la derecha) con una cuenta del equipo.
+- **Los permisos de escritura se asignan por UID** en la Realtime Database y solo se editan desde la consola de Firebase:
+  - `/usuarios/<uid>: true`: cuentas del equipo, que pueden modificar `agenteN/params` y `conversor/params`.
+  - `/dispositivos/<uid>: true`: cuenta del ESP32 gateway, que puede escribir telemetría, `agentes`, `history`, `loghf`, `consenso` y `sistema`.
+- **Las reglas limitan los parámetros críticos** (voltaje objetivo, umbrales de protección y límites de corriente) a rangos seguros. El firmware aplica los mismos límites.
 - Al arrancar, el firmware deja siempre el medio puente en estado seguro (`pwmForceSafe()`), antes de cualquier otra inicialización.
 - La `apiKey` que aparece en `public/*.html` es una clave pública de cliente de Firebase. El acceso a los datos lo controlan las reglas de `database.rules.json`.

@@ -291,22 +291,22 @@ static void canApplyConfig3(uint8_t idx, float v) {
   if (xSemaphoreTake(xMutex, pdMS_TO_TICKS(20)) != pdTRUE) return;
   switch (idx) {
     /* Buckboost */
-    case C3_TARGET_V:   targetV = clampF(v, 0.5f, 9.0f); break;
+    case C3_TARGET_V:   targetV = clampF(v, 3.0f, 6.0f); break;
     case C3_OMEGA_V:    omegaV = clampF(v, 1.0f, 100000.0f); gains = true; break;
     case C3_OMEGA_I:    omegaI = clampF(v, 1.0f, 100000.0f); gains = true; break;
     case C3_ZETA_V:     zetaV  = clampF(v, 0.1f, 5.0f);      gains = true; break;
     case C3_ZETA_I:     zetaI  = clampF(v, 0.1f, 5.0f);      gains = true; break;
     case C3_PLANT_VDC:  plantVdc = clampF(v, 0.5f, 100.0f); gains = true; break;
     case C3_KD_DROOP:   kdDroop = clampF(v, 0.0f, 20.0f); break;
-    case C3_IREF_MAX:   iRefMax = clampF(v, 0.0f, 10.0f); break;
-    case C3_IREF_MIN:   iRefMin = clampF(v, -10.0f, 0.0f); break;
+    case C3_IREF_MAX:   iRefMax = clampF(v, 0.0f, 5.0f); break;
+    case C3_IREF_MIN:   iRefMin = clampF(v, -5.0f, 0.0f); break;
     case C3_OV_TRIP:    overvoltageTrip = clampF(v, 4.0f, 8.0f); break;
     case C3_UV_TRIP:    undervoltageTrip = clampF(v, 0.0f, 5.0f); break;
-    case C3_OC_TRIP:    overcurrentTrip = clampF(v, 0.1f, 10.0f); break;
+    case C3_OC_TRIP:    overcurrentTrip = clampF(v, 0.1f, 5.0f); break;
     case C3_RUN_MODE:   requestedMode = (v != 0.0f) ? RUN_ON : RUN_OFF; break;
     case C3_FAULT_ACK:  faultLatched = false; faultCode = CAN_FAULT_CLEAR; requestedMode = RUN_OFF; break;
-    case C3_BAT_OV_TRIP: bat2sOvTrip = clampF(v, 3.0f, 12.0f); break;
-    case C3_BAT_UV_TRIP: bat2sUvTrip = clampF(v, 0.0f, 12.0f); break;
+    case C3_BAT_OV_TRIP: bat2sOvTrip = clampF(v, 6.0f, 8.8f); break;
+    case C3_BAT_UV_TRIP: bat2sUvTrip = clampF(v, 0.0f, 7.4f); break;
     case C3_SOC_EMPTY_V: socEmptyV = clampF(v, 0.0f, 12.0f); break;
     case C3_SOC_FULL_V:  socFullV = clampF(v, 0.0f, 12.0f); break;
     case C3_PWM_PERIOD_US: pwmPeriodUs = (uint32_t)clampF(v, 50.0f, 500.0f); break;
@@ -331,9 +331,9 @@ static void canApplyConfig3(uint8_t idx, float v) {
     case C3_PV_CTRL_MS:  pvControlPeriodMs = (uint32_t)clampF(v, 10.0f, 1000.0f); break;
     case C3_PV_PANEL_TRIPLO: pvPanelTripLow = clampF(v, 0.0f, 10.0f); break;
     case C3_PV_BAT_WARN_HI: pvBatWarnHigh = clampF(v, 0.0f, pvBatTripHigh); break;
-    case C3_PV_BAT_TRIP_HI: pvBatTripHigh = clampF(v, 0.0f, 12.0f); break;
-    case C3_PV_IIN_MAX:  pvInputCurrentMax = clampF(v, 0.05f, 20.0f); break;
-    case C3_PV_IBAT_MAX: pvBatteryChargeCurrentMax = clampF(v, 0.05f, 20.0f); break;
+    case C3_PV_BAT_TRIP_HI: pvBatTripHigh = clampF(v, 0.0f, 8.8f); break;
+    case C3_PV_IIN_MAX:  pvInputCurrentMax = clampF(v, 0.05f, 4.0f); break;
+    case C3_PV_IBAT_MAX: pvBatteryChargeCurrentMax = clampF(v, 0.05f, 2.5f); break;
     case C3_PV_IBAT_LIM: pvIbatChargeLim = clampF(v, 0.0f, 20.0f); break;
     case C3_IBAT_IDLE:   iBatIdle = clampF(v, 0.0f, 5.0f); break;
     case C3_BUS_CHK_EN:  busChkEnable = (v != 0.0f); break;

@@ -230,7 +230,7 @@ h1 span{color:var(--muted);font-weight:400;}
       <div class="param-list">
         <div class="param-row">
           <label>Target V</label>
-          <input type="number" id="p-target_v" step="0.1" min="0.5" max="10" value="5.0">
+          <input type="number" id="p-target_v" step="0.1" min="3" max="6" value="5.0">
           <span class="current-val" id="cv-target_v">–</span>
         </div>
         <div class="param-row">
@@ -293,12 +293,12 @@ h1 span{color:var(--muted);font-weight:400;}
         </div>
         <div class="param-row">
           <label>I ref máx (A)</label>
-          <input type="number" id="p-i_ref_max" step="0.1" min="0" max="10" value="5.0">
+          <input type="number" id="p-i_ref_max" step="0.1" min="0" max="5" value="5.0">
           <span class="current-val" id="cv-i_ref_max">–</span>
         </div>
         <div class="param-row">
           <label>I ref mín (A)</label>
-          <input type="number" id="p-i_ref_min" step="0.1" min="-10" max="0" value="-5.0">
+          <input type="number" id="p-i_ref_min" step="0.1" min="-5" max="0" value="-5.0">
           <span class="current-val" id="cv-i_ref_min">–</span>
         </div>
       </div>
@@ -317,17 +317,17 @@ h1 span{color:var(--muted);font-weight:400;}
       <div class="param-list">
         <div class="param-row">
           <label>Sobrevoltaje (V)</label>
-          <input type="number" id="p-ov_trip" step="0.1" min="4" max="15" value="6.5">
+          <input type="number" id="p-ov_trip" step="0.1" min="4" max="8" value="6.5">
           <span class="current-val" id="cv-ov_trip">–</span>
         </div>
         <div class="param-row">
           <label>Subvoltaje (V)</label>
-          <input type="number" id="p-uv_trip" step="0.1" min="0" max="4" value="2.0">
+          <input type="number" id="p-uv_trip" step="0.1" min="0" max="5" value="2.0">
           <span class="current-val" id="cv-uv_trip">–</span>
         </div>
         <div class="param-row">
           <label>Sobrecorriente (A)</label>
-          <input type="number" id="p-oc_trip" step="0.1" min="0.1" max="10" value="5.5">
+          <input type="number" id="p-oc_trip" step="0.1" min="0.1" max="5" value="1.5">
           <span class="current-val" id="cv-oc_trip">–</span>
         </div>
       </div>
@@ -436,8 +436,7 @@ h1 span{color:var(--muted);font-weight:400;}
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getDatabase, ref, onValue, update }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-import { getAuth, signInAnonymously }
-  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { setupAuth, canWrite } from "./auth.js";
 
 const firebaseConfig = {
   apiKey           : "AIzaSyDwXigQYn1N0nreSYCJ8h0ta63i1mjIWK8",
@@ -451,18 +450,14 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
-/* ── Auth anónima: necesaria para que las reglas permitan leer/escribir ── */
-const auth = getAuth(app);
-try {
-  await signInAnonymously(auth);
-} catch (e) {
-  console.error("[Auth] Falló el inicio de sesión anónimo:", e);
-}
+/* ── Lectura pública; escribir requiere sesión de una cuenta del equipo ── */
+setupAuth(app, db);
 
 const paramsRef = ref(db, "agente1/params");
 
 /* ── Escribir params ── */
 async function writeParams(fields) {
+  if (!canWrite()) return;
   try {
     await update(paramsRef, fields);
     addLog("✓ Actualizado: " + JSON.stringify(fields), "ok");

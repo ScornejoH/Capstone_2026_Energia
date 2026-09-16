@@ -421,16 +421,16 @@ static void canApplyConfig(uint8_t idx, float v) {
   if (xSemaphoreTake(xMutex, pdMS_TO_TICKS(20)) != pdTRUE) return;
 
   switch (idx) {
-    case CFG_TARGET_V:  targetV          = clampF(v,  0.5f, 10.0f);                 break;
+    case CFG_TARGET_V:  targetV          = clampF(v,  3.0f,  6.0f);                 break;
     case CFG_OMEGA_V:   omegaV           = clampF(v,  1.0f, 100000.0f); gainsChanged = true; break;
     case CFG_OMEGA_I:   omegaI           = clampF(v,  1.0f, 100000.0f); gainsChanged = true; break;
     case CFG_PLANT_VDC: plantVdc         = clampF(v,  0.5f, 100.0f);    gainsChanged = true; break;
     case CFG_KD_DROOP:  kdDroop          = clampF(v,  0.0f, 20.0f);                 break;
-    case CFG_IREF_MAX:  iRefMax          = clampF(v,  0.0f, 10.0f);                 break;
-    case CFG_IREF_MIN:  iRefMin          = clampF(v, -10.0f, 0.0f);                 break;
-    case CFG_OV_TRIP:   overvoltageTrip  = clampF(v,  4.0f, 15.0f);                 break;
+    case CFG_IREF_MAX:  iRefMax          = clampF(v,  0.0f,  5.0f);                 break;
+    case CFG_IREF_MIN:  iRefMin          = clampF(v, -5.0f,  0.0f);                 break;
+    case CFG_OV_TRIP:   overvoltageTrip  = clampF(v,  4.0f,  8.0f);                 break;
     case CFG_UV_TRIP:   undervoltageTrip = clampF(v,  0.0f,  4.0f);                 break;
-    case CFG_OC_TRIP:   overcurrentTrip  = clampF(v,  0.1f, 10.0f);                 break;
+    case CFG_OC_TRIP:   overcurrentTrip  = clampF(v,  0.1f,  5.0f);                 break;
     case CFG_RUN_MODE:
       /* Solo on/off. Si hay un fault latcheado, el lazo de control sigue
          forzando OFF hasta recibir CFG_FAULT_ACK. */

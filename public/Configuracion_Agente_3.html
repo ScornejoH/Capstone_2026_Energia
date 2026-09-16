@@ -251,7 +251,7 @@ h1 span{color:var(--muted);font-weight:400;}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { setupAuth, canWrite } from "./auth.js";
 
 const firebaseConfig = {
   apiKey:"AIzaSyDwXigQYn1N0nreSYCJ8h0ta63i1mjIWK8",
@@ -264,8 +264,7 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
-const auth = getAuth(app);
-try { await signInAnonymously(auth); } catch(e){ console.error("[Auth]", e); }
+setupAuth(app, db);   // lectura pública; escribir requiere sesión del equipo
 
 const $ = id => document.getElementById(id);
 const setTxt = (id,v)=>{ const e=$(id); if(e) e.textContent=(v??'–'); };
@@ -277,6 +276,7 @@ function addLog(msg,cls=''){ const b=$('log-box'); const p=document.createElemen
 
 const paramsRef = ref(db,"agente3/params");
 async function writeParams(fields){
+  if (!canWrite()) return;
   try { await update(paramsRef, fields); addLog("✓ ← "+JSON.stringify(fields),"ok"); }
   catch(e){ addLog("✗ error: "+e.message,"fault"); }
 }

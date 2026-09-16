@@ -222,13 +222,13 @@ void readParams() {
     if (doc.containsKey("run_mode")) {
       requestedMode = doc["run_mode"].as<int>() ? RUN_ON : RUN_OFF;
     }
-    if (doc.containsKey("target_v"))   targetV  = clampF(doc["target_v"],  0.5f, 10.0f);
+    if (doc.containsKey("target_v"))   targetV  = clampF(doc["target_v"],  3.0f, 6.0f);
     if (doc.containsKey("kd_droop"))   kdDroop  = clampF(doc["kd_droop"],  0.0f, 20.0f);
-    if (doc.containsKey("i_ref_max"))  iRefMax  = clampF(doc["i_ref_max"], 0.0f, 10.0f);
-    if (doc.containsKey("i_ref_min"))  iRefMin  = clampF(doc["i_ref_min"],-10.0f, 0.0f);
-    if (doc.containsKey("ov_trip"))    overvoltageTrip  = clampF(doc["ov_trip"],  4.0f, 15.0f);
+    if (doc.containsKey("i_ref_max"))  iRefMax  = clampF(doc["i_ref_max"], 0.0f, 5.0f);
+    if (doc.containsKey("i_ref_min"))  iRefMin  = clampF(doc["i_ref_min"],-5.0f, 0.0f);
+    if (doc.containsKey("ov_trip"))    overvoltageTrip  = clampF(doc["ov_trip"],  4.0f, 8.0f);
     if (doc.containsKey("uv_trip"))    undervoltageTrip = clampF(doc["uv_trip"],  0.0f,  4.0f);
-    if (doc.containsKey("oc_trip"))    overcurrentTrip  = clampF(doc["oc_trip"],  0.1f, 10.0f);
+    if (doc.containsKey("oc_trip"))    overcurrentTrip  = clampF(doc["oc_trip"],  0.1f, 5.0f);
     if (doc.containsKey("acs_offset"))      acsOffset      = clampF(doc["acs_offset"],      0.0f,  5.0f);
     if (doc.containsKey("acs_sign"))        acsSign        = doc["acs_sign"].as<float>() >= 0 ? 1.0f : -1.0f;
     if (doc.containsKey("acs_sensitivity")) acsSensitivity = clampF(doc["acs_sensitivity"], 0.001f, 1.0f);
